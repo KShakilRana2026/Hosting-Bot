@@ -372,3 +372,89 @@ def add_domain_to_project(message, project_name):
         message,
         f"✅ Successfully Deployed!\n\n🌍 Live URL:\n{live_url}"
             )
+
+@bot.message_handler(func=lambda m: m.text == "🗑 Remove Site")
+def remove_site_start(message):
+    user_id = message.from_user.id
+    ref = db.reference(f'users/{user_id}/sites')
+    sites = ref.get()
+
+    if not sites:
+        bot.reply_to(message, "❌ No sites found.")
+        return
+
+    site_list = "\n".join(sites.keys())
+    bot.reply_to(
+        message,
+        f"📂 Your Sites:\n\n{site_list}\n\nEnter project name to delete:"
+    )
+
+    
+    bot.register_next_step_handler(message, confirm_delete)
+    def confirm_delete(message):
+    user_id = message.from_user.id
+    project_name = message.text.strip()
+
+    ref = db.reference(f'users/{user_id}/sites/{project_name}')
+    site = ref.get()
+
+    if not site:
+        bot.reply_to(message, "❌ Invalid project name.")
+        return
+
+    bot.reply_to(message, "⏳ Deleting project...")
+
+    # -------------------------
+    # Delete from Vercel
+    # -------------------------
+    vercel_headers = {
+        "Authorization": f"Bearer {VERCEL_TOKEN}"
+    }
+
+    requests.delete(
+        f"https://api.vercel.com/v9/projects/{project_name}",
+        headers=vercel_headers
+    )
+
+    # -------------------------
+    # Delete from GitHub
+    # -------------------------
+    github_headers = {
+        "Authorization": f"token {GITHUB_TOKEN}"
+    }
+
+    requests.delete(
+        f"https://api.github.com/repos/{GITHUB_USERNAME}/{project_name}",
+        headers=github_headers
+    )
+
+    # -------------------------
+    # Delete from Firebase
+    # -------------------------
+    ref.delete()
+
+    bot.reply_to(message, "✅ Project deleted successfully.")
+
+with zipfile.ZipFile(BytesIO(downloaded_file)) as z:
+    for member in z.namelist():
+        if ".." in member:
+            continue
+        z.extract(member, temp_path)
+        shutil.rmtree(temp_path)
+
+@bot.message_handler(func=lambda m: m.text == "📂 My Sites")
+def my_sites(message):
+    user_id = message.from_user.id
+    ref = db.reference(f'users/{user_id}/sites')
+    sites = ref.get()
+
+    if not sites:
+        bot.reply_to(message, "❌ No sites hosted yet.")
+        return
+
+    text = "🌍 Your Hosted Sites:\n\n"
+    for name, data in sites.items():
+        url = data.get("live_url", "Deploying...")
+        text += f"{name}\n{url}\n\n"
+
+    bot.reply_to(message, text)
