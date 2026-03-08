@@ -1,0 +1,25 @@
+services:
+  - type: worker
+    name: telegram-hosting-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_USERNAME
+        sync: false
+      - key: VERCEL_TOKEN
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: CHANNEL_ID
+        sync: false
+      - key: GROUP_ID
+        sync: false
+      - key: FIREBASE_DB_URL
+        sync: false
