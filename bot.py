@@ -13,6 +13,8 @@ BOT_TOKEN = "8551402834:AAEj34D1ImTVuSGGb4SKdsSiWPMz4S_yeN4"
 CHANNEL_ID = -1003736706053
 GROUP_ID = -1003771909344
 FIREBASE_DB_URL = "https://bd-host-43562-default-rtdb.firebaseio.com"
+GITHUB_TOKEN = "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"
+GITHUB_USERNAME = "KShakilRana2026"
 
 # =============================
 
@@ -166,3 +168,97 @@ def remove_site(message):
 
 print("Bot Running...")
 bot.infinity_polling()
+
+import requests
+import zipfile
+import shutil
+from io import BytesIO
+
+# =============================
+# 📦 ZIP UPLOAD HANDLER
+# =============================
+
+@bot.message_handler(content_types=['document'])
+def handle_zip(message):
+    user_id = message.from_user.id
+
+    if not message.document.file_name.endswith(".zip"):
+        bot.reply_to(message, "❌ Only ZIP files allowed.")
+        return
+
+    if not check_daily_limit(user_id):
+        bot.reply_to(message, "❌ Daily limit reached (5 sites).")
+        return
+
+    bot.reply_to(message, "⏳ Downloading ZIP...")
+
+    # Download file
+    file_info = bot.get_file(message.document.file_id)
+    downloaded_file = bot.download_file(file_info.file_path)
+
+    temp_path = f"temp/{user_id}"
+    if os.path.exists(temp_path):
+        shutil.rmtree(temp_path)
+    os.makedirs(temp_path)
+
+    # Extract ZIP securely
+    try:
+        with zipfile.ZipFile(BytesIO(downloaded_file)) as z:
+            for member in z.namelist():
+                if ".." in member:
+                    continue
+                z.extract(member, temp_path)
+    except:
+        bot.reply_to(message, "❌ Invalid ZIP file.")
+        return
+
+    bot.reply_to(message, "🚀 Creating GitHub Repo...")
+
+    repo_name = f"user-{user_id}-{int(datetime.now().timestamp())}"
+
+    # Create GitHub Repo
+    repo_url = "https://api.github.com/user/repos"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    data = {"name": repo_name, "private": False}
+
+    r = requests.post(repo_url, headers=headers, json=data)
+    if r.status_code != 201:
+        bot.reply_to(message, "❌ Failed to create GitHub repo.")
+        return
+
+    bot.reply_to(message, "📤 Uploading Files to GitHub...")
+
+    # Upload files
+    for root, dirs, files in os.walk(temp_path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            rel_path = os.path.relpath(file_path, temp_path)
+
+            with open(file_path, "rb") as f:
+                content = f.read()
+
+            upload_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/contents/{rel_path}"
+
+            upload_data = {
+                "message": "Initial Commit",
+                "content": content.encode("base64") if False else None
+            }
+
+            import base64
+            upload_data["content"] = base64.b64encode(content).decode("utf-8")
+
+            requests.put(upload_url, headers=headers, json=upload_data)
+
+    # Save to Firebase
+    ref = db.reference(f'users/{user_id}/sites/{repo_name}')
+    ref.set({
+        "repo": repo_name,
+        "created": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+
+    increase_count(user_id)
+
+    bot.reply_to(
+        message,
+        f"✅ Files uploaded successfully!\n\nGitHub Repo:\nhttps://github.com/{GITHUB_USERNAME}/{repo_name}"
+)
