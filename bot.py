@@ -15,6 +15,7 @@ GROUP_ID = -1003771909344
 FIREBASE_DB_URL = "https://bd-host-43562-default-rtdb.firebaseio.com"
 GITHUB_TOKEN = "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"
 GITHUB_USERNAME = "KShakilRana2026"
+VERCEL_TOKEN = "vcp_0NBpp5U9EmXfnldr2NG5QLasFZFsqtGEXAD61NnAe1Bw4S1DRB2jch51"
 
 # =============================
 
@@ -226,8 +227,43 @@ def handle_zip(message):
         bot.reply_to(message, "❌ Failed to create GitHub repo.")
         return
 
-    bot.reply_to(message, "📤 Uploading Files to GitHub...")
+    @bot.message_handler(func=lambda m: m.text == "🌐 Add Domain")
+def ask_domain(message):
+    bot.reply_to(message, "Enter your project name:")
 
+    bot.register_next_step_handler(message, get_project_for_domain)
+
+def get_project_for_domain(message):
+    project_name = message.text.strip()
+    bot.reply_to(message, "Enter your domain (example.com):")
+
+    bot.register_next_step_handler(
+        message,
+        lambda msg: add_domain_to_project(msg, project_name)
+    )
+
+def add_domain_to_project(message, project_name):
+    domain = message.text.strip()
+
+    headers = {
+        "Authorization": f"Bearer {VERCEL_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    r = requests.post(
+        f"https://api.vercel.com/v9/projects/{project_name}/domains",
+        headers=headers,
+        json={"name": domain}
+    )
+
+    if r.status_code not in [200, 201]:
+        bot.reply_to(message, "❌ Failed to add domain.")
+        return
+
+    bot.reply_to(
+        message,
+        f"✅ Domain added successfully!\n\nNow point your DNS to Vercel."
+    )
     # Upload files
     for root, dirs, files in os.walk(temp_path):
         for file in files:
@@ -258,7 +294,81 @@ def handle_zip(message):
 
     increase_count(user_id)
 
+    bot.reply_to(message, "🚀 Connecting to Vercel...")
+
+    vercel_headers = {
+        "Authorization": f"Bearer {VERCEL_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    # Create Vercel Project linked to GitHub
+    project_data = {
+        "name": repo_name,
+        "gitRepository": {
+            "type": "github",
+            "repo": f"{GITHUB_USERNAME}/{repo_name}"
+        }
+    }
+
+    vr = requests.post(
+        "https://api.vercel.com/v9/projects",
+        headers=vercel_headers,
+        json=project_data
+    )
+
+    if vr.status_code not in [200, 201]:
+        bot.reply_to(message, "❌ Failed to create Vercel project.")
+        return
+
+    bot.reply_to(message, "⏳ Deploying... Please wait...")
+
+    # Trigger Deploy
+    deploy_data = {
+        "name": repo_name,
+        "gitSource": {
+            "type": "github",
+            "repo": f"{GITHUB_USERNAME}/{repo_name}",
+            "ref": "main"
+        }
+    }
+
+    dr = requests.post(
+        "https://api.vercel.com/v13/deployments",
+        headers=vercel_headers,
+        json=deploy_data
+    )
+
+    if dr.status_code not in [200, 201]:
+        bot.reply_to(message, "❌ Deploy failed.")
+        return
+
+    deployment = dr.json()
+    deployment_id = deployment.get("id")
+
+    # Wait for deployment ready
+    import time
+    status = "BUILDING"
+
+    while status == "BUILDING":
+        time.sleep(5)
+        check = requests.get(
+            f"https://api.vercel.com/v13/deployments/{deployment_id}",
+            headers=vercel_headers
+        )
+        status = check.json().get("readyState")
+
+    if status != "READY":
+        bot.reply_to(message, "❌ Deployment error.")
+        return
+
+    live_url = f"https://{repo_name}.vercel.app"
+
+    # Update Firebase
+    ref.update({
+        "live_url": live_url
+    })
+
     bot.reply_to(
         message,
-        f"✅ Files uploaded successfully!\n\nGitHub Repo:\nhttps://github.com/{GITHUB_USERNAME}/{repo_name}"
-)
+        f"✅ Successfully Deployed!\n\n🌍 Live URL:\n{live_url}"
+            )
