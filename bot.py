@@ -1,5 +1,5 @@
 # ==========================================================
-# 🔥 টেলিগ্রাম হোস্টিং বট - ফাইনাল ফিক্সড ভার্সন
+# 🔥 টেলিগ্রাম হোস্টিং বট - Markdown ফিক্সড ভার্সন
 # ==========================================================
 
 import os
@@ -70,7 +70,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 print("✅ বট টোকেন সঠিক")
 
 # ==========================================================
-# 🔥 ফায়ারবেস ফিক্সড
+# 🔥 ফায়ারবেস ইনিশিয়ালাইজেশন
 # ==========================================================
 firebase_ready = False
 
@@ -82,21 +82,17 @@ def init_firebase():
         return False
     
     try:
-        # Base64 ডিকোড
         json_bytes = base64.b64decode(FIREBASE_CONFIG_BASE64)
         json_str = json_bytes.decode('utf-8')
         cred_dict = json.loads(json_str)
         
-        # টেম্প ফাইল
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             json.dump(cred_dict, f)
             temp_path = f.name
         
-        # Firebase init
         cred = credentials.Certificate(temp_path)
         firebase_admin.initialize_app(cred, {'databaseURL': FIREBASE_DB_URL})
         
-        # টেম্প ফাইল ডিলিট
         os.unlink(temp_path)
         
         firebase_ready = True
@@ -175,15 +171,15 @@ def is_admin(user_id):
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
     text = (
-        "👋 **Welcome!**\n\n"
+        "👋 Welcome!\n\n"
         "📤 Upload your website ZIP file.\n"
         "✅ Daily limit: 5 sites\n"
         "📦 Max size: 50MB"
     )
-    bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu())
+    bot.send_message(message.chat.id, text, reply_markup=main_menu())
 
 # ==========================================================
-# 📦 জিপ ফাইল হ্যান্ডলার
+# 📦 জিপ ফাইল হ্যান্ডলার - Vercel ফিক্সড
 # ==========================================================
 @bot.message_handler(content_types=['document'])
 def handle_zip(message):
@@ -222,41 +218,41 @@ def handle_zip(message):
             
             bot.edit_message_text("🔧 Creating GitHub repo...", message.chat.id, status.message_id)
             
-            # GitHub
             github_ok, github_url = create_github(repo_name, temp_dir)
             if not github_ok:
-                bot.edit_message_text(f"❌ GitHub error!", message.chat.id, status.message_id)
+                bot.edit_message_text("❌ GitHub error!", message.chat.id, status.message_id)
                 return
             
             bot.edit_message_text("🚀 Deploying to Vercel...", message.chat.id, status.message_id)
             
-            # Vercel
-            live_url = deploy_vercel(repo_name)
-            if not live_url:
-                bot.edit_message_text("❌ Vercel deployment failed!", message.chat.id, status.message_id)
-                return
+            # Vercel ডিপ্লয় - ফিক্সড ভার্সন
+            live_url = deploy_to_vercel(repo_name)
             
-            add_count(user_id)
-            used = get_count(user_id)
-            
-            if firebase_ready:
-                try:
-                    db.reference(f'users/{user_id}/sites/{repo_name}').set({
-                        "url": live_url,
-                        "github": github_url,
-                        "date": datetime.now().isoformat()
-                    })
-                except:
-                    pass
-            
-            success = (
-                f"✅ **Deployment Successful!**\n\n"
-                f"🌐 **Live URL:**\n{live_url}\n\n"
-                f"📂 **GitHub:**\n{github_url}\n\n"
-                f"📊 **Used today:** {used}/5"
-            )
-            
-            bot.edit_message_text(success, message.chat.id, status.message_id, parse_mode="Markdown")
+            if live_url:
+                add_count(user_id)
+                used = get_count(user_id)
+                
+                if firebase_ready:
+                    try:
+                        db.reference(f'users/{user_id}/sites/{repo_name}').set({
+                            "url": live_url,
+                            "github": github_url,
+                            "date": datetime.now().isoformat()
+                        })
+                    except:
+                        pass
+                
+                # Markdown ছাড়া প্লেইন টেক্সট ব্যবহার করা হয়েছে parse_mode এড়ানোর জন্য
+                success = (
+                    f"✅ Deployment Successful!\n\n"
+                    f"🌐 Live URL:\n{live_url}\n\n"
+                    f"📂 GitHub:\n{github_url}\n\n"
+                    f"📊 Used today: {used}/5"
+                )
+                
+                bot.edit_message_text(success, message.chat.id, status.message_id)
+            else:
+                bot.edit_message_text("❌ Vercel deployment failed! Check Vercel token and try again.", message.chat.id, status.message_id)
             
     except Exception as e:
         bot.edit_message_text(f"❌ Error: {str(e)[:100]}", message.chat.id, status.message_id)
@@ -295,13 +291,17 @@ def create_github(repo_name, local_path):
     except:
         return False, None
 
-def deploy_vercel(repo_name):
+def deploy_to_vercel(repo_name):
+    """Vercel-এ ডিপ্লয় করে - ফিক্সড ভার্সন"""
     headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
     
     try:
-        # Test token
+        print(f"🔄 Vercel deploying: {repo_name}")
+        
+        # Token test
         test = requests.get("https://api.vercel.com/v2/user", headers=headers, timeout=10)
         if test.status_code != 200:
+            print(f"❌ Vercel token invalid: {test.status_code}")
             return None
         
         # Create project
@@ -314,9 +314,17 @@ def deploy_vercel(repo_name):
             }
         }
         
-        requests.post("https://api.vercel.com/v9/projects", headers=headers, json=project_data, timeout=30)
+        proj_resp = requests.post(
+            "https://api.vercel.com/v9/projects",
+            headers=headers,
+            json=project_data,
+            timeout=30
+        )
         
-        # Deploy
+        if proj_resp.status_code not in [200, 201]:
+            print(f"⚠️ Project creation status: {proj_resp.status_code}")
+        
+        # Create deployment
         deploy_data = {
             "name": repo_name,
             "gitSource": {
@@ -326,25 +334,45 @@ def deploy_vercel(repo_name):
             }
         }
         
-        r = requests.post("https://api.vercel.com/v13/deployments", headers=headers, json=deploy_data, timeout=30)
+        deploy_resp = requests.post(
+            "https://api.vercel.com/v13/deployments",
+            headers=headers,
+            json=deploy_data,
+            timeout=30
+        )
         
-        if r.status_code in [200, 201]:
+        print(f"📡 Vercel response: {deploy_resp.status_code}")
+        
+        if deploy_resp.status_code in [200, 201]:
+            print("✅ Vercel deployment created")
             return f"https://{repo_name}.vercel.app"
         
-        return f"https://{repo_name}.vercel.app"
+        # If deployment already exists
+        if deploy_resp.status_code == 400:
+            try:
+                error_data = deploy_resp.json()
+                if "already_exists" in str(error_data).lower():
+                    print("⚠️ Deployment already exists")
+                    return f"https://{repo_name}.vercel.app"
+            except:
+                pass
         
-    except:
+        print(f"❌ Vercel error: {deploy_resp.status_code}")
+        return None
+        
+    except Exception as e:
+        print(f"❌ Vercel exception: {e}")
         return None
 
 # ==========================================================
-# 📂 MY SITES - ফিক্সড
+# 📂 MY SITES
 # ==========================================================
 @bot.message_handler(func=lambda m: m.text == "📂 MY SITES")
 def my_sites_handler(message):
     user_id = message.from_user.id
     
     if not firebase_ready:
-        bot.reply_to(message, "❌ Database not connected! Please try again later.")
+        bot.reply_to(message, "❌ Database not connected!")
         return
     
     try:
@@ -354,17 +382,17 @@ def my_sites_handler(message):
             bot.reply_to(message, "📂 You haven't hosted any sites yet!")
             return
         
-        text = "🌐 **Your Sites:**\n\n"
+        text = "🌐 Your Sites:\n\n"
         for name, data in sites.items():
-            text += f"📁 **{name}**\n🔗 {data.get('url', 'N/A')}\n📅 {data.get('date', '')[:10]}\n\n"
+            text += f"📁 {name}\n🔗 {data.get('url', 'N/A')}\n📅 {data.get('date', '')[:10]}\n\n"
         
-        bot.send_message(message.chat.id, text, parse_mode="Markdown")
+        bot.send_message(message.chat.id, text)
         
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {str(e)[:100]}")
 
 # ==========================================================
-# 🌐 ADD DOMAIN - ফিক্সড
+# 🌐 ADD DOMAIN
 # ==========================================================
 @bot.message_handler(func=lambda m: m.text == "🌐 ADD DOMAIN")
 def add_domain_handler(message):
@@ -410,14 +438,13 @@ def process_domain(message, project):
     if r.status_code in [200, 201]:
         bot.reply_to(
             message,
-            f"✅ **Domain added!**\n\nDNS: CNAME → cname.vercel-dns.com",
-            parse_mode="Markdown"
+            f"✅ Domain added!\n\nDNS: CNAME -> cname.vercel-dns.com"
         )
     else:
         bot.reply_to(message, f"❌ Failed: {r.text[:100]}")
 
 # ==========================================================
-# 🗑 DELETE SITE - ফিক্সড
+# 🗑 DELETE SITE
 # ==========================================================
 @bot.message_handler(func=lambda m: m.text == "🗑 DELETE SITE")
 def delete_site_handler(message):
@@ -455,10 +482,9 @@ def delete_callback(call):
     )
     
     bot.edit_message_text(
-        f"Delete **{project}**?",
+        f"Delete {project}?",
         call.message.chat.id,
         call.message.message_id,
-        parse_mode="Markdown",
         reply_markup=markup
     )
 
@@ -480,10 +506,9 @@ def confirm_delete(call):
         db.reference(f'users/{user_id}/sites/{project}').delete()
     
     bot.edit_message_text(
-        f"✅ **{project} deleted!**",
+        f"✅ {project} deleted!",
         call.message.chat.id,
-        call.message.message_id,
-        parse_mode="Markdown"
+        call.message.message_id
     )
 
 # ==========================================================
@@ -495,8 +520,8 @@ def daily_limit_handler(message):
     remaining = 5 - used
     bar = "🟩" * used + "⬜" * remaining
     
-    text = f"📊 **Daily Usage:**\n\n{bar}\n**Used:** {used}/5\n**Remaining:** {remaining}"
-    bot.reply_to(message, text, parse_mode="Markdown")
+    text = f"📊 Daily Usage:\n\n{bar}\nUsed: {used}/5\nRemaining: {remaining}"
+    bot.reply_to(message, text)
 
 # ==========================================================
 # 👑 ADMIN PANEL
@@ -512,15 +537,15 @@ def admin_panel_handler(message):
         return
     
     if admin_sessions.get(user_id):
-        bot.send_message(message.chat.id, "👑 **Admin Panel**", parse_mode="Markdown", reply_markup=admin_menu())
+        bot.send_message(message.chat.id, "👑 Admin Panel", reply_markup=admin_menu())
     else:
-        bot.reply_to(message, "🔑 Enter password:", parse_mode="Markdown")
+        bot.reply_to(message, "🔑 Enter password:")
         bot.register_next_step_handler(message, check_admin_pass)
 
 def check_admin_pass(message):
     if message.text == ADMIN_PASSWORD:
         admin_sessions[message.from_user.id] = True
-        bot.send_message(message.chat.id, "✅ **Login successful!**", parse_mode="Markdown", reply_markup=admin_menu())
+        bot.send_message(message.chat.id, "✅ Login successful!", reply_markup=admin_menu())
     else:
         bot.reply_to(message, "❌ Wrong password!", reply_markup=main_menu())
 
@@ -532,7 +557,7 @@ def total_users_handler(message):
     if firebase_ready:
         users = db.reference('users').get()
         count = len(users) if users else 0
-        bot.reply_to(message, f"📊 **Total Users:** {count}", parse_mode="Markdown")
+        bot.reply_to(message, f"📊 Total Users: {count}")
     else:
         bot.reply_to(message, "📊 Firebase not connected")
 
@@ -547,7 +572,7 @@ def total_sites_handler(message):
         if users:
             for data in users.values():
                 total += len(data.get('sites', {}))
-        bot.reply_to(message, f"🌍 **Total Sites:** {total}", parse_mode="Markdown")
+        bot.reply_to(message, f"🌍 Total Sites: {total}")
     else:
         bot.reply_to(message, "🌍 Firebase not connected")
 
@@ -618,7 +643,7 @@ def process_broadcast(message):
     sent = 0
     for uid in users.keys():
         try:
-            bot.send_message(int(uid), f"📢 **Broadcast:**\n\n{message.text}", parse_mode="Markdown")
+            bot.send_message(int(uid), f"📢 Broadcast:\n\n{message.text}")
             sent += 1
             time.sleep(0.05)
         except:
@@ -661,16 +686,16 @@ def admin_list_handler(message):
     if not admin_sessions.get(message.from_user.id):
         return
     
-    text = f"👑 **Admin List:**\n\n⭐ **Super Admin:** `{ADMIN_ID}`\n\n"
+    text = f"👑 Admin List:\n\n⭐ Super Admin: {ADMIN_ID}\n\n"
     
     if firebase_ready:
         admins = db.reference('admins').get()
         if admins:
-            text += "📋 **Other Admins:**\n"
+            text += "📋 Other Admins:\n"
             for aid in admins.keys():
-                text += f"• `{aid}`\n"
+                text += f"• {aid}\n"
     
-    bot.reply_to(message, text, parse_mode="Markdown")
+    bot.reply_to(message, text)
 
 @bot.message_handler(func=lambda m: m.text == "🚪 LOGOUT")
 def logout_handler(message):
@@ -687,7 +712,6 @@ def main_menu_handler(message):
 # ==========================================================
 @bot.message_handler(func=lambda m: True)
 def fallback_handler(message):
-    # এই হ্যান্ডলার শুধু তখনই কল হবে যখন অন্য কোনো হ্যান্ডলার মিলবে না
     bot.reply_to(message, "❌ Please use the menu buttons!", reply_markup=main_menu())
 
 # ==========================================================
