@@ -1,5 +1,5 @@
 # ==========================================================
-# 🔥 টেলিগ্রাম হোস্টিং বট - Markdown ফিক্সড ভার্সন
+# 🔥 টেলিগ্রাম হোস্টিং বট - 409 Error ফিক্সড
 # ==========================================================
 
 import os
@@ -15,6 +15,7 @@ import tempfile
 import json
 import traceback
 import threading
+import signal
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
 from datetime import datetime
@@ -53,6 +54,7 @@ if not ADMIN_ID: missing.append("ADMIN_ID")
 
 if missing:
     print(f"❌ অনুপস্থিত: {', '.join(missing)}")
+    print("⚠️ দয়া করে Environment Variables সেট করুন")
     sys.exit(1)
 
 try:
@@ -78,29 +80,33 @@ def init_firebase():
     global firebase_ready
     
     if not FIREBASE_CONFIG_BASE64 or not FIREBASE_DB_URL:
-        print("⚠️ ফায়ারবেস কনফিগ নেই")
+        print("⚠️ ফায়ারবেস কনফিগ নেই - ফায়ারবেস ছাড়া চলবে")
         return False
     
     try:
+        print("🔄 ফায়ারবেস কানেক্ট করার চেষ্টা করছি...")
+        
         json_bytes = base64.b64decode(FIREBASE_CONFIG_BASE64)
         json_str = json_bytes.decode('utf-8')
         cred_dict = json.loads(json_str)
         
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(cred_dict, f)
-            temp_path = f.name
+        temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+        json.dump(cred_dict, temp_file)
+        temp_file.close()
         
-        cred = credentials.Certificate(temp_path)
+        cred = credentials.Certificate(temp_file.name)
         firebase_admin.initialize_app(cred, {'databaseURL': FIREBASE_DB_URL})
         
-        os.unlink(temp_path)
+        db.reference('/').get(timeout=5)
+        
+        os.unlink(temp_file.name)
         
         firebase_ready = True
-        print("✅ ফায়ারবেস কানেক্টেড")
+        print("✅ ফায়ারবেস সফলভাবে কানেক্ট হয়েছে")
         return True
         
     except Exception as e:
-        print(f"❌ ফায়ারবেস এরর: {e}")
+        print(f"❌ ফায়ারবেস কানেক্ট হয়নি: {e}")
         return False
 
 init_firebase()
@@ -171,15 +177,15 @@ def is_admin(user_id):
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
     text = (
-        "👋 Welcome!\n\n"
+        "👋 **Welcome!**\n\n"
         "📤 Upload your website ZIP file.\n"
         "✅ Daily limit: 5 sites\n"
         "📦 Max size: 50MB"
     )
-    bot.send_message(message.chat.id, text, reply_markup=main_menu())
+    bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu())
 
 # ==========================================================
-# 📦 জিপ ফাইল হ্যান্ডলার - Vercel ফিক্সড
+# 📦 জিপ ফাইল হ্যান্ডলার
 # ==========================================================
 @bot.message_handler(content_types=['document'])
 def handle_zip(message):
@@ -220,12 +226,11 @@ def handle_zip(message):
             
             github_ok, github_url = create_github(repo_name, temp_dir)
             if not github_ok:
-                bot.edit_message_text("❌ GitHub error!", message.chat.id, status.message_id)
+                bot.edit_message_text("❌ GitHub error! Check GitHub token.", message.chat.id, status.message_id)
                 return
             
             bot.edit_message_text("🚀 Deploying to Vercel...", message.chat.id, status.message_id)
             
-            # Vercel ডিপ্লয় - ফিক্সড ভার্সন
             live_url = deploy_to_vercel(repo_name)
             
             if live_url:
@@ -242,17 +247,21 @@ def handle_zip(message):
                     except:
                         pass
                 
-                # Markdown ছাড়া প্লেইন টেক্সট ব্যবহার করা হয়েছে parse_mode এড়ানোর জন্য
                 success = (
-                    f"✅ Deployment Successful!\n\n"
-                    f"🌐 Live URL:\n{live_url}\n\n"
-                    f"📂 GitHub:\n{github_url}\n\n"
-                    f"📊 Used today: {used}/5"
+                    f"✅ **Deployment Successful!**\n\n"
+                    f"🌐 **Live URL:**\n{live_url}\n\n"
+                    f"📂 **GitHub:**\n{github_url}\n\n"
+                    f"📊 **Used today:** {used}/5"
                 )
                 
-                bot.edit_message_text(success, message.chat.id, status.message_id)
+                bot.edit_message_text(success, message.chat.id, status.message_id, parse_mode="Markdown")
             else:
-                bot.edit_message_text("❌ Vercel deployment failed! Check Vercel token and try again.", message.chat.id, status.message_id)
+                bot.edit_message_text(
+                    "❌ Vercel deployment failed!\n\n"
+                    "🔑 Check your Vercel token in Render Dashboard.",
+                    message.chat.id,
+                    status.message_id
+                )
             
     except Exception as e:
         bot.edit_message_text(f"❌ Error: {str(e)[:100]}", message.chat.id, status.message_id)
@@ -262,20 +271,24 @@ def create_github(repo_name, local_path):
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
     
     try:
-        # Create repo
+        test = requests.get("https://api.github.com/user", headers=headers, timeout=10)
+        if test.status_code != 200:
+            return False, None
+        
         data = {"name": repo_name, "private": False}
         r = requests.post("https://api.github.com/user/repos", headers=headers, json=data, timeout=30)
         
-        if r.status_code != 201:
+        if r.status_code == 422:
             repo_name = f"{repo_name}-{int(time.time())}"
             r = requests.post("https://api.github.com/user/repos", headers=headers, json=data, timeout=30)
         
         if r.status_code != 201:
             return False, None
         
-        # Upload files
         for root, _, files in os.walk(local_path):
             for file in files:
+                if file.startswith('.'):
+                    continue
                 path = os.path.join(root, file)
                 rel = os.path.relpath(path, local_path)
                 
@@ -292,19 +305,13 @@ def create_github(repo_name, local_path):
         return False, None
 
 def deploy_to_vercel(repo_name):
-    """Vercel-এ ডিপ্লয় করে - ফিক্সড ভার্সন"""
     headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
     
     try:
-        print(f"🔄 Vercel deploying: {repo_name}")
-        
-        # Token test
         test = requests.get("https://api.vercel.com/v2/user", headers=headers, timeout=10)
         if test.status_code != 200:
-            print(f"❌ Vercel token invalid: {test.status_code}")
             return None
         
-        # Create project
         project_data = {
             "name": repo_name,
             "gitRepository": {
@@ -314,17 +321,8 @@ def deploy_to_vercel(repo_name):
             }
         }
         
-        proj_resp = requests.post(
-            "https://api.vercel.com/v9/projects",
-            headers=headers,
-            json=project_data,
-            timeout=30
-        )
+        requests.post("https://api.vercel.com/v9/projects", headers=headers, json=project_data, timeout=30)
         
-        if proj_resp.status_code not in [200, 201]:
-            print(f"⚠️ Project creation status: {proj_resp.status_code}")
-        
-        # Create deployment
         deploy_data = {
             "name": repo_name,
             "gitSource": {
@@ -341,27 +339,20 @@ def deploy_to_vercel(repo_name):
             timeout=30
         )
         
-        print(f"📡 Vercel response: {deploy_resp.status_code}")
-        
         if deploy_resp.status_code in [200, 201]:
-            print("✅ Vercel deployment created")
             return f"https://{repo_name}.vercel.app"
         
-        # If deployment already exists
         if deploy_resp.status_code == 400:
             try:
                 error_data = deploy_resp.json()
                 if "already_exists" in str(error_data).lower():
-                    print("⚠️ Deployment already exists")
                     return f"https://{repo_name}.vercel.app"
             except:
                 pass
         
-        print(f"❌ Vercel error: {deploy_resp.status_code}")
         return None
         
-    except Exception as e:
-        print(f"❌ Vercel exception: {e}")
+    except:
         return None
 
 # ==========================================================
@@ -382,11 +373,11 @@ def my_sites_handler(message):
             bot.reply_to(message, "📂 You haven't hosted any sites yet!")
             return
         
-        text = "🌐 Your Sites:\n\n"
+        text = "🌐 **Your Sites:**\n\n"
         for name, data in sites.items():
-            text += f"📁 {name}\n🔗 {data.get('url', 'N/A')}\n📅 {data.get('date', '')[:10]}\n\n"
+            text += f"📁 **{name}**\n🔗 {data.get('url', 'N/A')}\n📅 {data.get('date', '')[:10]}\n\n"
         
-        bot.send_message(message.chat.id, text)
+        bot.send_message(message.chat.id, text, parse_mode="Markdown")
         
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {str(e)[:100]}")
@@ -438,7 +429,8 @@ def process_domain(message, project):
     if r.status_code in [200, 201]:
         bot.reply_to(
             message,
-            f"✅ Domain added!\n\nDNS: CNAME -> cname.vercel-dns.com"
+            f"✅ **Domain added!**\n\n📌 DNS: CNAME → cname.vercel-dns.com",
+            parse_mode="Markdown"
         )
     else:
         bot.reply_to(message, f"❌ Failed: {r.text[:100]}")
@@ -482,9 +474,10 @@ def delete_callback(call):
     )
     
     bot.edit_message_text(
-        f"Delete {project}?",
+        f"Delete **{project}**?",
         call.message.chat.id,
         call.message.message_id,
+        parse_mode="Markdown",
         reply_markup=markup
     )
 
@@ -493,22 +486,20 @@ def confirm_delete(call):
     project = call.data.replace('conf_', '')
     user_id = call.from_user.id
     
-    # Delete from Vercel
     headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
     requests.delete(f"https://api.vercel.com/v9/projects/{project}", headers=headers)
     
-    # Delete from GitHub
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
     requests.delete(f"https://api.github.com/repos/{GITHUB_USERNAME}/{project}", headers=headers)
     
-    # Delete from Firebase
     if firebase_ready:
         db.reference(f'users/{user_id}/sites/{project}').delete()
     
     bot.edit_message_text(
-        f"✅ {project} deleted!",
+        f"✅ **{project}** deleted!",
         call.message.chat.id,
-        call.message.message_id
+        call.message.message_id,
+        parse_mode="Markdown"
     )
 
 # ==========================================================
@@ -520,8 +511,8 @@ def daily_limit_handler(message):
     remaining = 5 - used
     bar = "🟩" * used + "⬜" * remaining
     
-    text = f"📊 Daily Usage:\n\n{bar}\nUsed: {used}/5\nRemaining: {remaining}"
-    bot.reply_to(message, text)
+    text = f"📊 **Daily Usage:**\n\n{bar}\n**Used:** {used}/5\n**Remaining:** {remaining}"
+    bot.reply_to(message, text, parse_mode="Markdown")
 
 # ==========================================================
 # 👑 ADMIN PANEL
@@ -537,15 +528,15 @@ def admin_panel_handler(message):
         return
     
     if admin_sessions.get(user_id):
-        bot.send_message(message.chat.id, "👑 Admin Panel", reply_markup=admin_menu())
+        bot.send_message(message.chat.id, "👑 **Admin Panel**", parse_mode="Markdown", reply_markup=admin_menu())
     else:
-        bot.reply_to(message, "🔑 Enter password:")
+        bot.reply_to(message, "🔑 Enter password:", parse_mode="Markdown")
         bot.register_next_step_handler(message, check_admin_pass)
 
 def check_admin_pass(message):
     if message.text == ADMIN_PASSWORD:
         admin_sessions[message.from_user.id] = True
-        bot.send_message(message.chat.id, "✅ Login successful!", reply_markup=admin_menu())
+        bot.send_message(message.chat.id, "✅ **Login successful!**", parse_mode="Markdown", reply_markup=admin_menu())
     else:
         bot.reply_to(message, "❌ Wrong password!", reply_markup=main_menu())
 
@@ -557,7 +548,7 @@ def total_users_handler(message):
     if firebase_ready:
         users = db.reference('users').get()
         count = len(users) if users else 0
-        bot.reply_to(message, f"📊 Total Users: {count}")
+        bot.reply_to(message, f"📊 **Total Users:** {count}", parse_mode="Markdown")
     else:
         bot.reply_to(message, "📊 Firebase not connected")
 
@@ -572,7 +563,7 @@ def total_sites_handler(message):
         if users:
             for data in users.values():
                 total += len(data.get('sites', {}))
-        bot.reply_to(message, f"🌍 Total Sites: {total}")
+        bot.reply_to(message, f"🌍 **Total Sites:** {total}", parse_mode="Markdown")
     else:
         bot.reply_to(message, "🌍 Firebase not connected")
 
@@ -643,7 +634,7 @@ def process_broadcast(message):
     sent = 0
     for uid in users.keys():
         try:
-            bot.send_message(int(uid), f"📢 Broadcast:\n\n{message.text}")
+            bot.send_message(int(uid), f"📢 **Broadcast:**\n\n{message.text}", parse_mode="Markdown")
             sent += 1
             time.sleep(0.05)
         except:
@@ -686,29 +677,29 @@ def admin_list_handler(message):
     if not admin_sessions.get(message.from_user.id):
         return
     
-    text = f"👑 Admin List:\n\n⭐ Super Admin: {ADMIN_ID}\n\n"
+    text = f"👑 **Admin List:**\n\n⭐ **Super Admin:** {ADMIN_ID}\n\n"
     
     if firebase_ready:
         admins = db.reference('admins').get()
         if admins:
-            text += "📋 Other Admins:\n"
+            text += "📋 **Other Admins:**\n"
             for aid in admins.keys():
                 text += f"• {aid}\n"
     
-    bot.reply_to(message, text)
+    bot.reply_to(message, text, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: m.text == "🚪 LOGOUT")
 def logout_handler(message):
     if message.from_user.id in admin_sessions:
         del admin_sessions[message.from_user.id]
-    bot.send_message(message.chat.id, "✅ Logged out!", reply_markup=main_menu())
+    bot.send_message(message.chat.id, "✅ **Logged out!**", parse_mode="Markdown", reply_markup=main_menu())
 
 @bot.message_handler(func=lambda m: m.text == "⬅️ MAIN MENU")
 def main_menu_handler(message):
-    bot.send_message(message.chat.id, "⬅️ Main Menu", reply_markup=main_menu())
+    bot.send_message(message.chat.id, "⬅️ **Main Menu**", parse_mode="Markdown", reply_markup=main_menu())
 
 # ==========================================================
-# 🔄 FALLBACK HANDLER (সবশেষে রাখতে হবে)
+# 🔄 FALLBACK HANDLER
 # ==========================================================
 @bot.message_handler(func=lambda m: True)
 def fallback_handler(message):
@@ -732,15 +723,59 @@ def run_http():
     server.serve_forever()
 
 # ==========================================================
-# 🏁 বট চালু
+# 🏁 বট চালু - 409 Error ফিক্সড
 # ==========================================================
 if __name__ == "__main__":
+    # প্রথমে আগের কোন webhook বা polling বন্ধ করুন
+    try:
+        bot.remove_webhook()
+        time.sleep(1)
+        print("✅ Webhook removed")
+    except:
+        pass
+    
+    # HTTP সার্ভার চালু
     threading.Thread(target=run_http, daemon=True).start()
     
-    try:
-        bot_info = bot.get_me()
-        print(f"✅ Bot: @{bot_info.username}")
-        print("🟢 Running...")
-        bot.infinity_polling()
-    except Exception as e:
-        print(f"❌ Error: {e}")
+    # বট চালু করার চেষ্টা
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            bot_info = bot.get_me()
+            print(f"✅ Bot: @{bot_info.username}")
+            print("🟢 Running...")
+            
+            # সিগন্যাল হ্যান্ডলার যোগ করা
+            def signal_handler(signum, frame):
+                print("\n👋 Shutting down...")
+                bot.stop_polling()
+                sys.exit(0)
+            
+            signal.signal(signal.SIGINT, signal_handler)
+            signal.signal(signal.SIGTERM, signal_handler)
+            
+            # Polling চালু
+            bot.infinity_polling(timeout=60, long_polling_timeout=60)
+            break
+            
+        except Exception as e:
+            if "409" in str(e):
+                retry_count += 1
+                print(f"⚠️ 409 Conflict detected, retry {retry_count}/{max_retries}")
+                time.sleep(5)
+                
+                # আরও জোরে webhook রিমুভ করুন
+                try:
+                    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook")
+                    bot.remove_webhook()
+                    time.sleep(2)
+                except:
+                    pass
+            else:
+                print(f"❌ Fatal error: {e}")
+                break
+    
+    if retry_count >= max_retries:
+        print("❌ Could not start bot after multiple retries")
