@@ -1,12 +1,5 @@
 # ==========================================================
-# 🔥 ADVANCED TELEGRAM HOSTING BOT - GitHub DB VERSION
-# ==========================================================
-# ✅ All Features:
-# ✅ GitHub as Database (No Firebase)
-# ✅ Group + Channel Verify | ✅ Daily 5 Limit
-# ✅ ZIP Upload & Secure Extract | ✅ GitHub Repo Create | ✅ Vercel Deploy
-# ✅ Custom Domain | ✅ Full Remove System | ✅ Admin Panel
-# ✅ Ban/Unban | ✅ Broadcast | ✅ Multiple Admin Support
+# 🔥 টেলিগ্রাম হোস্টিং বট – চ্যানেল/গ্রুপ ভেরিফিকেশন সহ
 # ==========================================================
 
 import os
@@ -28,7 +21,7 @@ from telebot.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeybo
 from dotenv import load_dotenv
 
 # ==========================================================
-# 🔐 LOAD ENVIRONMENT VARIABLES
+# 🔐 লোড এনভায়রনমেন্ট ভেরিয়েবল
 # ==========================================================
 load_dotenv()
 
@@ -42,10 +35,10 @@ CHANNEL_ID = os.getenv("CHANNEL_ID")
 GROUP_ID = os.getenv("GROUP_ID")
 
 print("=" * 70)
-print("🔥 ADVANCED TELEGRAM HOSTING BOT (GitHub DB)")
+print("🔥 টেলিগ্রাম হোস্টিং বট (চ্যানেল/গ্রুপ ভেরিফিকেশন সহ)")
 print("=" * 70)
 
-# Validate Required Variables
+# বাধ্যতামূলক ভেরিয়েবল চেক
 required_vars = {
     "BOT_TOKEN": BOT_TOKEN,
     "GITHUB_TOKEN": GITHUB_TOKEN,
@@ -62,39 +55,36 @@ for var_name, var_value in required_vars.items():
     if not var_value:
         missing_vars.append(var_name)
     else:
-        print(f"✅ {var_name}: Found")
+        print(f"✅ {var_name}: পাওয়া গেছে")
 
 if missing_vars:
-    print(f"❌ Missing variables: {', '.join(missing_vars)}")
-    print("⚠️ Please set all environment variables in Render Dashboard")
+    print(f"❌ অনুপস্থিত ভেরিয়েবল: {', '.join(missing_vars)}")
+    print("⚠️ Render Dashboard-এ সব Environment Variables সেট করুন")
     sys.exit(1)
 
-# Convert IDs to integers
+# ID গুলো ইন্টিজারে রূপান্তর
 try:
     ADMIN_ID = int(ADMIN_ID)
     CHANNEL_ID = int(CHANNEL_ID)
     GROUP_ID = int(GROUP_ID)
 except ValueError:
-    print("❌ Invalid ID format! ADMIN_ID, CHANNEL_ID, GROUP_ID must be integers")
+    print("❌ ADMIN_ID, CHANNEL_ID বা GROUP_ID সঠিক সংখ্যা নয়")
     sys.exit(1)
 
 # ==========================================================
-# 🚀 BOT INITIALIZATION
+# 🚀 বট ইনিশিয়ালাইজেশন
 # ==========================================================
 try:
     bot = telebot.TeleBot(BOT_TOKEN)
-    print("✅ Bot token validated")
+    print("✅ বট টোকেন সঠিক")
 except Exception as e:
-    print(f"❌ Invalid bot token: {e}")
+    print(f"❌ বট টোকেন ভুল: {e}")
     sys.exit(1)
 
 # ==========================================================
-# 🔧 GITHUB DATABASE CLASS
+# 🔧 গিটহাব ডাটাবেজ ক্লাস (ফায়ারবেস ছাড়া)
 # ==========================================================
-
 class GitHubDB:
-    """GitHub-based database for storing user data, sites, admins, etc."""
-
     def __init__(self, token, username, repo_name="telegram-bot-db"):
         self.token = token
         self.username = username
@@ -107,10 +97,9 @@ class GitHubDB:
         self._ensure_repo_exists()
 
     def _ensure_repo_exists(self):
-        """Check if repo exists, if not create it."""
+        """ডাটাবেজ রিপোজিটরি না থাকলে তৈরি করে"""
         url = f"https://api.github.com/repos/{self.username}/{self.repo_name}"
         r = requests.get(url, headers=self.headers)
-
         if r.status_code == 404:
             create_url = "https://api.github.com/user/repos"
             data = {
@@ -121,20 +110,16 @@ class GitHubDB:
             }
             r = requests.post(create_url, headers=self.headers, json=data)
             if r.status_code == 201:
-                print(f"✅ Database repo created: {self.repo_name}")
+                print(f"✅ ডাটাবেজ রিপোজিটরি তৈরি হয়েছে: {self.repo_name}")
             else:
-                print(f"❌ Failed to create repo: {r.status_code}")
+                print(f"❌ ডাটাবেজ রিপোজিটরি তৈরি ব্যর্থ: {r.status_code}")
 
     def _get_file_sha(self, path):
-        """Get SHA of a file (required for updates)."""
         url = f"{self.base_url}/{path}"
         r = requests.get(url, headers=self.headers)
-        if r.status_code == 200:
-            return r.json().get('sha')
-        return None
+        return r.json().get('sha') if r.status_code == 200 else None
 
     def _read_file(self, path):
-        """Read and decode a JSON file from repo."""
         url = f"{self.base_url}/{path}"
         r = requests.get(url, headers=self.headers)
         if r.status_code == 200:
@@ -144,12 +129,10 @@ class GitHubDB:
         return None
 
     def _write_file(self, path, content, message="Update database"):
-        """Write or update a JSON file in repo."""
         url = f"{self.base_url}/{path}"
         json_str = json.dumps(content, indent=2)
         content_b64 = base64.b64encode(json_str.encode()).decode()
         sha = self._get_file_sha(path)
-
         data = {
             "message": message,
             "content": content_b64,
@@ -157,35 +140,28 @@ class GitHubDB:
         }
         if sha:
             data["sha"] = sha
-
         r = requests.put(url, headers=self.headers, json=data)
         return r.status_code in [200, 201]
 
-    # ----- User Management -----
+    # ইউজার ম্যানেজমেন্ট
     def get_user(self, user_id):
-        path = f"users/{user_id}.json"
-        return self._read_file(path)
+        return self._read_file(f"users/{user_id}.json")
 
     def save_user(self, user_id, user_data):
-        path = f"users/{user_id}.json"
-        return self._write_file(path, user_data, f"Update user {user_id}")
+        return self._write_file(f"users/{user_id}.json", user_data, f"Update user {user_id}")
 
     def get_all_users(self):
-        """Get all user files and return as dict {user_id: data}."""
         url = f"{self.base_url}/users"
         r = requests.get(url, headers=self.headers)
         users = {}
         if r.status_code == 200:
-            files = r.json()
-            for file in files:
+            for file in r.json():
                 if file['name'].endswith('.json'):
-                    user_id = file['name'].replace('.json', '')
-                    user_data = self._read_file(f"users/{file['name']}")
-                    if user_data:
-                        users[user_id] = user_data
+                    uid = file['name'].replace('.json', '')
+                    users[uid] = self._read_file(f"users/{file['name']}")
         return users
 
-    # ----- Site Management -----
+    # সাইট ম্যানেজমেন্ট
     def add_site(self, user_id, site_name, site_data):
         user = self.get_user(user_id) or {
             "user_id": user_id,
@@ -195,8 +171,6 @@ class GitHubDB:
             "last_reset": datetime.now().strftime("%Y-%m-%d"),
             "last_active": datetime.now().isoformat()
         }
-        if "sites" not in user:
-            user["sites"] = {}
         user["sites"][site_name] = {
             "url": site_data.get("url"),
             "github": site_data.get("github"),
@@ -212,7 +186,7 @@ class GitHubDB:
 
     def delete_site(self, user_id, site_name):
         user = self.get_user(user_id)
-        if user and "sites" in user and site_name in user["sites"]:
+        if user and site_name in user.get("sites", {}):
             del user["sites"][site_name]
             user["last_active"] = datetime.now().isoformat()
             return self.save_user(user_id, user)
@@ -220,7 +194,7 @@ class GitHubDB:
 
     def add_domain_to_site(self, user_id, site_name, domain):
         user = self.get_user(user_id)
-        if user and "sites" in user and site_name in user["sites"]:
+        if user and site_name in user.get("sites", {}):
             if "domains" not in user["sites"][site_name]:
                 user["sites"][site_name]["domains"] = []
             if domain not in user["sites"][site_name]["domains"]:
@@ -229,7 +203,7 @@ class GitHubDB:
             return self.save_user(user_id, user)
         return False
 
-    # ----- Daily Counter -----
+    # দৈনিক কাউন্টার
     def increment_daily_count(self, user_id):
         user = self.get_user(user_id) or {
             "user_id": user_id,
@@ -266,10 +240,9 @@ class GitHubDB:
             return self.save_user(user_id, user)
         return False
 
-    # ----- Admin Management -----
+    # অ্যাডমিন ম্যানেজমেন্ট
     def get_admins(self):
-        admins = self._read_file("admins.json")
-        return admins if admins else {}
+        return self._read_file("admins.json") or {}
 
     def add_admin(self, user_id, added_by):
         admins = self.get_admins()
@@ -292,10 +265,9 @@ class GitHubDB:
         admins = self.get_admins()
         return str(user_id) in admins
 
-    # ----- Blacklist Management -----
+    # ব্ল্যাকলিস্ট
     def get_blacklist(self):
-        blacklist = self._read_file("blacklist.json")
-        return blacklist if blacklist else {}
+        return self._read_file("blacklist.json") or {}
 
     def ban_user(self, user_id, banned_by):
         blacklist = self.get_blacklist()
@@ -316,44 +288,37 @@ class GitHubDB:
         blacklist = self.get_blacklist()
         return str(user_id) in blacklist
 
-    # ----- Statistics -----
+    # পরিসংখ্যান
     def get_stats(self):
         users = self.get_all_users()
         total_users = len(users)
         total_sites = 0
         active_today = 0
         today = datetime.now().strftime("%Y-%m-%d")
-        for user_data in users.values():
-            sites = user_data.get("sites", {})
-            total_sites += len(sites)
-            last_active = user_data.get("last_active", "")
-            if last_active.startswith(today):
+        for data in users.values():
+            total_sites += len(data.get("sites", {}))
+            if data.get("last_active", "").startswith(today):
                 active_today += 1
         return {
             "total_users": total_users,
             "total_sites": total_sites,
-            "active_today": active_today,
-            "updated_at": datetime.now().isoformat()
+            "active_today": active_today
         }
 
-# Initialize GitHub DB
+# গিটহাব ডাটাবেজ চালু
 db = GitHubDB(GITHUB_TOKEN, GITHUB_USERNAME, repo_name="telegram-bot-db")
-print("✅ GitHub Database connected")
+print("✅ GitHub ডাটাবেজ সংযুক্ত")
 
 # ==========================================================
-# 📊 RATE LIMITER (MEMORY CACHE)
+# 📊 ক্যাশ মেমরি (দৈনিক কাউন্ট)
 # ==========================================================
-# We'll use GitHub for persistent storage, but keep an in-memory cache for performance
 daily_cache = {}
 
 def check_daily_limit(user_id):
-    # Check cache first
     today = datetime.now().strftime("%Y-%m-%d")
     cache_key = f"{user_id}_{today}"
     if cache_key in daily_cache:
         return daily_cache[cache_key] < 5
-
-    # Fallback to GitHub
     count = db.get_daily_count(user_id)
     daily_cache[cache_key] = count
     return count < 5
@@ -361,8 +326,7 @@ def check_daily_limit(user_id):
 def increment_daily_count(user_id):
     count = db.increment_daily_count(user_id)
     today = datetime.now().strftime("%Y-%m-%d")
-    cache_key = f"{user_id}_{today}"
-    daily_cache[cache_key] = count
+    daily_cache[f"{user_id}_{today}"] = count
     return count
 
 def get_daily_count(user_id):
@@ -375,167 +339,177 @@ def get_daily_count(user_id):
     return count
 
 # ==========================================================
-# 🎛 MENU CREATION
+# 🎛 মেনু তৈরি
 # ==========================================================
 def main_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.row("🚀 HOST WEBSITE", "📂 MY SITES")
-    markup.row("🌐 ADD DOMAIN", "🗑 DELETE SITE")
-    markup.row("📊 DAILY LIMIT", "👑 ADMIN PANEL")
+    markup.row("🚀 ওয়েবসাইট হোস্ট করো", "📂 আমার সাইট")
+    markup.row("🌐 ডোমেইন যোগ করো", "🗑 সাইট ডিলিট করো")
+    markup.row("📊 লিমিট দেখো", "👑 অ্যাডমিন প্যানেল")
     return markup
 
 def admin_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.row("📊 TOTAL USERS", "🌍 TOTAL SITES")
-    markup.row("🚫 BAN USER", "✅ UNBAN USER")
-    markup.row("🔄 RESET LIMIT", "📢 BROADCAST")
-    markup.row("➕ ADD ADMIN", "➖ REMOVE ADMIN")
-    markup.row("📋 ADMIN LIST", "🚪 LOGOUT")
-    markup.row("⬅️ MAIN MENU")
+    markup.row("📊 মোট ইউজার", "🌍 মোট সাইট")
+    markup.row("🚫 ইউজার ব্লক করো", "✅ ইউজার আনব্লক করো")
+    markup.row("🔄 লিমিট রিসেট করো", "📢 ব্রডকাস্ট করো")
+    markup.row("➕ অ্যাডমিন যোগ করো", "➖ অ্যাডমিন রিমুভ করো")
+    markup.row("📋 অ্যাডমিন তালিকা", "🚪 লগআউট")
+    markup.row("⬅️ মূল মেনু")
     return markup
 
 # ==========================================================
-# ✅ VERIFICATION SYSTEM
+# ✅ চ্যানেল/গ্রুপ ভেরিফিকেশন ফাংশন (সম্পূর্ণ ঠিক করা)
 # ==========================================================
 def is_verified(user_id):
-    """Check if user is in channel/group and not banned."""
-    # Check ban first
+    """
+    চেক করে ইউজার চ্যানেল ও গ্রুপের সদস্য কিনা এবং ব্ল্যাকলিস্টেড কিনা
+    """
+    # প্রথমে ব্ল্যাকলিস্ট চেক
     if db.is_banned(user_id):
         return False
 
     try:
-        if CHANNEL_ID and GROUP_ID:
-            ch = bot.get_chat_member(CHANNEL_ID, user_id)
-            gp = bot.get_chat_member(GROUP_ID, user_id)
-            return ch.status in ["member", "administrator", "creator"] and \
-                   gp.status in ["member", "administrator", "creator"]
+        # চ্যানেল মেম্বারশিপ চেক
+        ch_member = bot.get_chat_member(CHANNEL_ID, user_id)
+        if ch_member.status not in ["member", "administrator", "creator"]:
+            return False
+
+        # গ্রুপ মেম্বারশিপ চেক
+        gp_member = bot.get_chat_member(GROUP_ID, user_id)
+        if gp_member.status not in ["member", "administrator", "creator"]:
+            return False
+
         return True
-    except Exception:
-        # If verification fails (e.g., bot not in group), allow for testing
-        return True
+    except Exception as e:
+        # বট যদি গ্রুপ/চ্যানেলে না থাকে বা অন্য কোনো এরর
+        print(f"⚠️ ভেরিফিকেশন এরর (user {user_id}): {e}")
+        # ডেভেলপমেন্টে ভেরিফিকেশন বাইপাস করতে চাইলে True রিটার্ন করুন
+        # প্রোডাকশনে False রিটার্ন করা উচিত
+        return False
 
 # ==========================================================
-# 🚀 /START COMMAND
+# 🚀 /start কমান্ড
 # ==========================================================
 @bot.message_handler(commands=['start'])
-def cmd_start(message):
+def start_command(message):
     user_id = message.from_user.id
     username = message.from_user.first_name
 
     if not is_verified(user_id):
+        # ভেরিফিকেশন না থাকলে জয়েন লিংক পাঠানো
         markup = InlineKeyboardMarkup()
+        try:
+            channel_link = f"https://t.me/c/{str(CHANNEL_ID)[4:]}"
+            group_link = f"https://t.me/c/{str(GROUP_ID)[4:]}"
+        except:
+            channel_link = "https://t.me/your_channel"
+            group_link = "https://t.me/your_group"
         markup.add(
-            InlineKeyboardButton("📢 JOIN CHANNEL", url=f"https://t.me/c/{str(CHANNEL_ID)[4:]}"),
-            InlineKeyboardButton("👥 JOIN GROUP", url=f"https://t.me/c/{str(GROUP_ID)[4:]}")
+            InlineKeyboardButton("📢 চ্যানেলে জয়েন করো", url=channel_link),
+            InlineKeyboardButton("👥 গ্রুপে জয়েন করো", url=group_link)
         )
         bot.reply_to(
             message,
-            "❌ **VERIFICATION REQUIRED**\n\nPlease join our channel and group to use this bot.",
+            "❌ **ভেরিফিকেশন প্রয়োজন**\n\nআমাদের চ্যানেল ও গ্রুপে জয়েন করার পর আবার /start দিন।",
             reply_markup=markup,
             parse_mode="Markdown"
         )
         return
 
     welcome_text = (
-        f"👋 **Welcome {username}!**\n\n"
-        f"📌 **This bot can host your websites on Vercel for FREE.**\n"
-        f"✅ **Daily Limit:** 5 sites\n\n"
-        f"📋 **How to use:**\n"
-        f"1️⃣ Zip your website files (must include index.html)\n"
-        f"2️⃣ Upload the zip file here\n"
-        f"3️⃣ Bot will automatically deploy to GitHub & Vercel\n"
-        f"4️⃣ Get your live URL instantly\n\n"
-        f"⚠️ **Max file size:** 50MB"
+        f"👋 **স্বাগতম {username}!**\n\n"
+        f"📌 এই বটের মাধ্যমে আপনি বিনামূল্যে আপনার ওয়েবসাইট Vercel-এ হোস্ট করতে পারবেন।\n"
+        f"✅ **দৈনিক লিমিট:** ৫টি সাইট\n\n"
+        f"📋 **ব্যবহারের নিয়ম:**\n"
+        f"১️⃣ আপনার ওয়েবসাইটের ফাইলগুলো জিপ করো (অবশ্যই index.html থাকতে হবে)\n"
+        f"২️⃣ জিপ ফাইলটি এখানে আপলোড করো\n"
+        f"৩️⃣ বট স্বয়ংক্রিয়ভাবে GitHub ও Vercel-এ ডিপ্লয় করবে\n"
+        f"৪️⃣ তুমি সাথে সাথে লাইভ লিংক পাবে\n\n"
+        f"⚠️ **সর্বোচ্চ ফাইল সাইজ:** ৫০MB"
     )
-
     bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=main_menu())
 
 # ==========================================================
-# 📦 ZIP FILE HANDLER
+# 📦 জিপ ফাইল হ্যান্ডলার
 # ==========================================================
 @bot.message_handler(content_types=['document'])
 def handle_zip(message):
     user_id = message.from_user.id
 
     if not is_verified(user_id):
-        bot.reply_to(message, "❌ You are not verified! Use /start first.")
+        bot.reply_to(message, "❌ তুমি ভেরিফাইড নও! /start দিয়ে ভেরিফিকেশন করো।")
         return
 
     if not message.document.file_name.endswith('.zip'):
-        bot.reply_to(message, "❌ Only ZIP files are allowed!")
+        bot.reply_to(message, "❌ শুধু .zip ফাইল অনুমোদিত!")
         return
 
     if not check_daily_limit(user_id):
         used = get_daily_count(user_id)
-        bot.reply_to(message, f"❌ Daily limit reached! You've used {used}/5 sites today.")
+        bot.reply_to(message, f"❌ আজকের লিমিট শেষ! ব্যবহার করেছো: {used}/৫")
         return
 
     if message.document.file_size > 50 * 1024 * 1024:
-        bot.reply_to(message, "❌ File size exceeds 50MB limit!")
+        bot.reply_to(message, "❌ ফাইল সাইজ ৫০MB-এর বেশি হতে পারবে না!")
         return
 
-    status_msg = bot.reply_to(message, "⏳ Processing your request...")
+    status_msg = bot.reply_to(message, "⏳ প্রসেসিং শুরু...")
 
     try:
         file_info = bot.get_file(message.document.file_id)
         downloaded = bot.download_file(file_info.file_path)
 
-        bot.edit_message_text("📦 Extracting zip file...", message.chat.id, status_msg.message_id)
+        bot.edit_message_text("📦 জিপ ফাইল এক্সট্র্যাক্ট করা হচ্ছে...", message.chat.id, status_msg.message_id)
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Secure extract (basic, add more checks if needed)
             with zipfile.ZipFile(BytesIO(downloaded)) as zf:
                 zf.extractall(temp_dir)
 
             if not os.path.exists(os.path.join(temp_dir, 'index.html')):
-                bot.edit_message_text("❌ index.html not found in zip!", message.chat.id, status_msg.message_id)
+                bot.edit_message_text("❌ index.html ফাইল পাওয়া যায়নি!", message.chat.id, status_msg.message_id)
                 return
 
             repo_name = f"site-{user_id}-{int(time.time())}"
 
-            bot.edit_message_text("🔧 Creating GitHub repository...", message.chat.id, status_msg.message_id)
+            bot.edit_message_text("🔧 GitHub রিপোজিটরি তৈরি হচ্ছে...", message.chat.id, status_msg.message_id)
 
             github_ok, github_url = create_github_repo(repo_name, temp_dir)
             if not github_ok:
-                bot.edit_message_text("❌ GitHub error! Check GitHub token.", message.chat.id, status_msg.message_id)
+                bot.edit_message_text("❌ GitHub রিপোজিটরি তৈরি ব্যর্থ! টোকেন চেক করো।", message.chat.id, status_msg.message_id)
                 return
 
-            bot.edit_message_text("🚀 Deploying to Vercel...", message.chat.id, status_msg.message_id)
+            bot.edit_message_text("🚀 Vercel-এ ডিপ্লয় হচ্ছে...", message.chat.id, status_msg.message_id)
 
             live_url = deploy_to_vercel(repo_name)
             if not live_url:
-                # If Vercel fails, we should clean up GitHub repo
+                # Vercel ব্যর্থ হলে GitHub রিপো ডিলিট করা ভালো
                 delete_github_repo(repo_name)
                 bot.edit_message_text(
-                    "❌ Vercel deployment failed!\n\n"
-                    "🔑 **Check your Vercel token:**\n"
-                    "1. Go to https://vercel.com/account/tokens\n"
-                    "2. Create a new token with full access\n"
-                    "3. Update VERCEL_TOKEN in Render Dashboard\n"
-                    "4. Deploy again",
+                    "❌ Vercel ডিপ্লয় ব্যর্থ!\n\n"
+                    "🔑 তোমার Vercel টোকেন চেক করো:\n"
+                    "১. https://vercel.com/account/tokens এ যাও\n"
+                    "২. নতুন টোকেন বানাও (full access)\n"
+                    "৩. Render Dashboard-এ VERCEL_TOKEN আপডেট করো\n"
+                    "৪. আবার চেষ্টা করো",
                     message.chat.id,
                     status_msg.message_id
                 )
                 return
 
-            # Success – update counters and save to GitHub DB
+            # সফল হলে কাউন্ট বাড়াও ও ডাটাবেজে সেভ করো
             used_now = increment_daily_count(user_id)
-
-            site_data = {
-                "url": live_url,
-                "github": github_url
-            }
-            db.add_site(user_id, repo_name, site_data)
+            db.add_site(user_id, repo_name, {"url": live_url, "github": github_url})
 
             success_text = (
-                f"✅ **Deployment Successful!**\n\n"
-                f"🌐 **Live URL:**\n{live_url}\n\n"
-                f"📂 **GitHub Repository:**\n{github_url}\n\n"
-                f"📊 **Today's Usage:** {used_now}/5\n\n"
-                f"💡 **Next Steps:**\n"
-                f"• Use '🌐 ADD DOMAIN' to add custom domain\n"
-                f"• Use '📂 MY SITES' to view all your sites\n"
-                f"• Use '🗑 DELETE SITE' to remove a site"
+                f"✅ **ডিপ্লয় সফল!**\n\n"
+                f"🌐 **লাইভ ইউআরএল:**\n{live_url}\n\n"
+                f"📂 **GitHub রিপোজিটরি:**\n{github_url}\n\n"
+                f"📊 **আজকে ব্যবহার:** {used_now}/৫\n\n"
+                f"💡 **পরবর্তী ধাপ:**\n"
+                f"• '🌐 ডোমেইন যোগ করো' দিয়ে কাস্টম ডোমেইন যোগ করতে পারো\n"
+                f"• '📂 আমার সাইট' দিয়ে সব সাইট দেখতে পারো\n"
+                f"• '🗑 সাইট ডিলিট করো' দিয়ে সাইট মুছে ফেলতে পারো"
             )
 
             bot.edit_message_text(
@@ -547,32 +521,35 @@ def handle_zip(message):
             )
 
     except zipfile.BadZipFile:
-        bot.edit_message_text("❌ Invalid zip file!", message.chat.id, status_msg.message_id)
+        bot.edit_message_text("❌ জিপ ফাইল নষ্ট!", message.chat.id, status_msg.message_id)
     except Exception as e:
-        bot.edit_message_text(f"❌ Unexpected error: {str(e)[:100]}", message.chat.id, status_msg.message_id)
-        print(f"Error in handle_zip: {traceback.format_exc()}")
+        bot.edit_message_text(f"❌ অপ্রত্যাশিত ত্রুটি: {str(e)[:100]}", message.chat.id, status_msg.message_id)
+        print(traceback.format_exc())
 
 # ==========================================================
-# 🔧 GITHUB REPO FUNCTIONS
+# 🔧 গিটহাব রিপোজিটরি তৈরি ফাংশন (API রেসপন্স চেক সহ)
 # ==========================================================
 def create_github_repo(repo_name, local_path):
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
     try:
-        # Test token
+        # টোকেন যাচাই
         test = requests.get("https://api.github.com/user", headers=headers, timeout=10)
         if test.status_code != 200:
+            print("❌ GitHub টোকেন ইনভ্যালিড")
             return False, None
 
-        # Create repo
+        # রিপো তৈরি
         data = {"name": repo_name, "private": False}
         r = requests.post("https://api.github.com/user/repos", headers=headers, json=data, timeout=30)
         if r.status_code == 422:
+            # নাম আগে থাকলে নতুন নাম দিয়ে আবার চেষ্টা
             repo_name = f"{repo_name}-{int(time.time())}"
             r = requests.post("https://api.github.com/user/repos", headers=headers, json=data, timeout=30)
         if r.status_code != 201:
+            print(f"❌ GitHub রিপো তৈরি ব্যর্থ: {r.status_code}")
             return False, None
 
-        # Upload files
+        # ফাইল আপলোড
         for root, _, files in os.walk(local_path):
             for file in files:
                 if file.startswith('.'):
@@ -583,7 +560,9 @@ def create_github_repo(repo_name, local_path):
                     content = base64.b64encode(f.read()).decode()
                 url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/contents/{rel_path}"
                 data = {"message": f"Add {rel_path}", "content": content, "branch": "main"}
-                requests.put(url, headers=headers, json=data, timeout=30)
+                resp = requests.put(url, headers=headers, json=data, timeout=30)
+                if resp.status_code not in [200, 201]:
+                    print(f"⚠️ {rel_path} আপলোড ব্যর্থ: {resp.status_code}")
 
         return True, f"https://github.com/{GITHUB_USERNAME}/{repo_name}"
     except Exception as e:
@@ -600,17 +579,18 @@ def delete_github_repo(repo_name):
         return False
 
 # ==========================================================
-# 🚀 VERCEL DEPLOY FUNCTION
+# 🚀 Vercel ডিপ্লয় ফাংশন (API রেসপন্স চেক সহ)
 # ==========================================================
 def deploy_to_vercel(repo_name):
     headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
     try:
-        # Test token
+        # টোকেন যাচাই
         test = requests.get("https://api.vercel.com/v2/user", headers=headers, timeout=10)
         if test.status_code != 200:
+            print("❌ Vercel টোকেন ইনভ্যালিড")
             return None
 
-        # Create project
+        # প্রোজেক্ট তৈরি
         project_data = {
             "name": repo_name,
             "gitRepository": {
@@ -619,9 +599,9 @@ def deploy_to_vercel(repo_name):
                 "ref": "main"
             }
         }
-        proj_resp = requests.post("https://api.vercel.com/v9/projects", headers=headers, json=project_data, timeout=30)
+        requests.post("https://api.vercel.com/v9/projects", headers=headers, json=project_data, timeout=30)
 
-        # Create deployment
+        # ডিপ্লয় তৈরি
         deploy_data = {
             "name": repo_name,
             "gitSource": {
@@ -630,12 +610,12 @@ def deploy_to_vercel(repo_name):
                 "ref": "main"
             }
         }
-        deploy_resp = requests.post("https://api.vercel.com/v13/deployments", headers=headers, json=deploy_data, timeout=30)
+        r = requests.post("https://api.vercel.com/v13/deployments", headers=headers, json=deploy_data, timeout=30)
 
-        if deploy_resp.status_code in [200, 201]:
+        if r.status_code in [200, 201]:
             return f"https://{repo_name}.vercel.app"
-        if deploy_resp.status_code == 400:
-            # Might already exist
+        if r.status_code == 400:
+            # অনেক সময় আগে থেকে থাকলে
             return f"https://{repo_name}.vercel.app"
         return None
     except Exception as e:
@@ -643,120 +623,101 @@ def deploy_to_vercel(repo_name):
         return None
 
 # ==========================================================
-# 📂 MY SITES MENU
+# 📂 আমার সাইট মেনু
 # ==========================================================
-@bot.message_handler(func=lambda m: m.text == "📂 MY SITES")
-def menu_my_sites(message):
+@bot.message_handler(func=lambda m: m.text == "📂 আমার সাইট")
+def my_sites_menu(message):
     user_id = message.from_user.id
-
     if not is_verified(user_id):
-        bot.reply_to(message, "❌ You are not verified!")
+        bot.reply_to(message, "❌ তুমি ভেরিফাইড নও!")
         return
-
     sites = db.get_user_sites(user_id)
     if not sites:
-        bot.reply_to(message, "📂 You haven't hosted any sites yet!")
+        bot.reply_to(message, "📂 তোমার এখনো কোনো সাইট নেই!")
         return
-
-    text = "🌐 **Your Sites:**\n\n"
+    text = "🌐 **তোমার সাইটসমূহ:**\n\n"
     for name, data in sites.items():
         text += f"📁 **{name}**\n🔗 {data.get('url', 'N/A')}\n📅 {data.get('created_at', '')[:10]}\n\n"
-
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 # ==========================================================
-# 🌐 ADD DOMAIN MENU
+# 🌐 ডোমেইন যোগ করো মেনু
 # ==========================================================
-@bot.message_handler(func=lambda m: m.text == "🌐 ADD DOMAIN")
-def menu_add_domain(message):
+@bot.message_handler(func=lambda m: m.text == "🌐 ডোমেইন যোগ করো")
+def add_domain_menu(message):
     user_id = message.from_user.id
-
     if not is_verified(user_id):
-        bot.reply_to(message, "❌ You are not verified!")
+        bot.reply_to(message, "❌ তুমি ভেরিফাইড নও!")
         return
-
     sites = db.get_user_sites(user_id)
     if not sites:
-        bot.reply_to(message, "❌ You have no sites to add domain to!")
+        bot.reply_to(message, "❌ তোমার কোনো সাইট নেই!")
         return
-
     markup = InlineKeyboardMarkup(row_width=1)
     for name in sites.keys():
         markup.add(InlineKeyboardButton(f"🌐 {name}", callback_data=f"dom_{name}"))
-    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="dom_cancel"))
-
-    bot.send_message(message.chat.id, "Select site to add domain:", reply_markup=markup)
+    markup.add(InlineKeyboardButton("❌ বাতিল", callback_data="dom_cancel"))
+    bot.send_message(message.chat.id, "যে সাইটে ডোমেইন যোগ করতে চাও সেটি নির্বাচন করো:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('dom_'))
 def domain_callback(call):
     if call.data == "dom_cancel":
-        bot.edit_message_text("✅ Cancelled", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text("✅ বাতিল করা হয়েছে", call.message.chat.id, call.message.message_id)
         return
-
     project = call.data.replace('dom_', '')
-    bot.edit_message_text("Enter your domain (example.com):", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("তোমার ডোমেইন নাম লিখো (যেমন: example.com):", call.message.chat.id, call.message.message_id)
     bot.register_next_step_handler(call.message, lambda m: process_domain(m, project))
 
 def process_domain(message, project):
     domain = message.text.strip()
-
     headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
     r = requests.post(
         f"https://api.vercel.com/v9/projects/{project}/domains",
         headers=headers,
         json={"name": domain}
     )
-
     if r.status_code in [200, 201]:
-        # Save domain to GitHub DB
         db.add_domain_to_site(message.from_user.id, project, domain)
         bot.reply_to(
             message,
-            f"✅ **Domain added!**\n\n📌 DNS: CNAME → cname.vercel-dns.com",
+            f"✅ **ডোমেইন যোগ হয়েছে!**\n\n📌 DNS সেটিংস:\nCNAME → cname.vercel-dns.com",
             parse_mode="Markdown"
         )
     else:
-        bot.reply_to(message, f"❌ Failed: {r.text[:100]}")
+        bot.reply_to(message, f"❌ ডোমেইন যোগ ব্যর্থ: {r.text[:100]}")
 
 # ==========================================================
-# 🗑 DELETE SITE MENU
+# 🗑 সাইট ডিলিট করো মেনু
 # ==========================================================
-@bot.message_handler(func=lambda m: m.text == "🗑 DELETE SITE")
-def menu_delete_site(message):
+@bot.message_handler(func=lambda m: m.text == "🗑 সাইট ডিলিট করো")
+def delete_site_menu(message):
     user_id = message.from_user.id
-
     if not is_verified(user_id):
-        bot.reply_to(message, "❌ You are not verified!")
+        bot.reply_to(message, "❌ তুমি ভেরিফাইড নও!")
         return
-
     sites = db.get_user_sites(user_id)
     if not sites:
-        bot.reply_to(message, "❌ You have no sites to delete!")
+        bot.reply_to(message, "❌ তোমার কোনো সাইট নেই!")
         return
-
     markup = InlineKeyboardMarkup(row_width=1)
     for name in sites.keys():
         markup.add(InlineKeyboardButton(f"🗑 {name}", callback_data=f"del_{name}"))
-    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="del_cancel"))
-
-    bot.send_message(message.chat.id, "Select site to delete:", reply_markup=markup)
+    markup.add(InlineKeyboardButton("❌ বাতিল", callback_data="del_cancel"))
+    bot.send_message(message.chat.id, "যে সাইট ডিলিট করতে চাও সেটি নির্বাচন করো:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('del_'))
 def delete_callback(call):
     if call.data == "del_cancel":
-        bot.edit_message_text("✅ Cancelled", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text("✅ বাতিল করা হয়েছে", call.message.chat.id, call.message.message_id)
         return
-
     project = call.data.replace('del_', '')
-
     markup = InlineKeyboardMarkup()
     markup.add(
-        InlineKeyboardButton("✅ Yes", callback_data=f"conf_{project}"),
-        InlineKeyboardButton("❌ No", callback_data="del_cancel")
+        InlineKeyboardButton("✅ হ্যাঁ", callback_data=f"conf_{project}"),
+        InlineKeyboardButton("❌ না", callback_data="del_cancel")
     )
-
     bot.edit_message_text(
-        f"Delete **{project}**?",
+        f"**{project}** কি সত্যিই ডিলিট করতে চাও?\n\n⚠️ GitHub রিপো ও Vercel প্রোজেক্ট মুছে যাবে!",
         call.message.chat.id,
         call.message.message_id,
         parse_mode="Markdown",
@@ -767,235 +728,211 @@ def delete_callback(call):
 def confirm_delete(call):
     project = call.data.replace('conf_', '')
     user_id = call.from_user.id
-
-    # Delete from Vercel
+    # Vercel থেকে ডিলিট
     headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
     requests.delete(f"https://api.vercel.com/v9/projects/{project}", headers=headers)
-
-    # Delete from GitHub repo
+    # GitHub থেকে ডিলিট
     delete_github_repo(project)
-
-    # Delete from GitHub DB
+    # ডাটাবেজ থেকে ডিলিট
     db.delete_site(user_id, project)
-
     bot.edit_message_text(
-        f"✅ **{project}** deleted!",
+        f"✅ **{project}** ডিলিট করা হয়েছে!",
         call.message.chat.id,
         call.message.message_id,
         parse_mode="Markdown"
     )
 
 # ==========================================================
-# 📊 DAILY LIMIT MENU
+# 📊 লিমিট দেখো মেনু
 # ==========================================================
-@bot.message_handler(func=lambda m: m.text == "📊 DAILY LIMIT")
-def menu_daily_limit(message):
+@bot.message_handler(func=lambda m: m.text == "📊 লিমিট দেখো")
+def daily_limit_menu(message):
     user_id = message.from_user.id
-
     if not is_verified(user_id):
-        bot.reply_to(message, "❌ You are not verified!")
+        bot.reply_to(message, "❌ তুমি ভেরিফাইড নও!")
         return
-
     used = get_daily_count(user_id)
     remaining = 5 - used
     bar = "🟩" * used + "⬜" * remaining
-
-    text = f"📊 **Daily Usage:**\n\n{bar}\n**Used:** {used}/5\n**Remaining:** {remaining}"
+    text = f"📊 **আজকের ব্যবহার:**\n\n{bar}\n**ব্যবহার করেছো:** {used}/৫\n**বাকি:** {remaining}"
     bot.reply_to(message, text, parse_mode="Markdown")
 
 # ==========================================================
-# 👑 ADMIN PANEL
+# 👑 অ্যাডমিন প্যানেল
 # ==========================================================
 admin_sessions = {}
 
-@bot.message_handler(func=lambda m: m.text == "👑 ADMIN PANEL")
-def menu_admin_panel(message):
+@bot.message_handler(func=lambda m: m.text == "👑 অ্যাডমিন প্যানেল")
+def admin_panel_handler(message):
     user_id = message.from_user.id
-
-    if not is_verified(user_id):
-        bot.reply_to(message, "❌ You are not verified!")
-        return
-
     if not db.is_admin(user_id, ADMIN_ID):
-        bot.reply_to(message, "❌ You don't have admin access!")
+        bot.reply_to(message, "❌ তোমার অ্যাডমিন অ্যাক্সেস নেই!")
         return
-
     if admin_sessions.get(user_id):
-        bot.send_message(message.chat.id, "👑 **Admin Panel**", parse_mode="Markdown", reply_markup=admin_menu())
+        bot.send_message(message.chat.id, "👑 **অ্যাডমিন প্যানেল**", parse_mode="Markdown", reply_markup=admin_menu())
     else:
-        bot.reply_to(message, "🔑 **Enter admin password:**", parse_mode="Markdown")
-        bot.register_next_step_handler(message, check_admin_password)
+        bot.reply_to(message, "🔑 **অ্যাডমিন পাসওয়ার্ড দাও:**", parse_mode="Markdown")
+        bot.register_next_step_handler(message, check_admin_pass)
 
-def check_admin_password(message):
-    user_id = message.from_user.id
+def check_admin_pass(message):
     if message.text == ADMIN_PASSWORD:
-        admin_sessions[user_id] = True
-        bot.send_message(message.chat.id, "✅ **Login successful!**", parse_mode="Markdown", reply_markup=admin_menu())
+        admin_sessions[message.from_user.id] = True
+        bot.send_message(message.chat.id, "✅ **লগইন সফল!**", parse_mode="Markdown", reply_markup=admin_menu())
     else:
-        bot.reply_to(message, "❌ **Wrong password!**", reply_markup=main_menu())
+        bot.reply_to(message, "❌ **ভুল পাসওয়ার্ড!**", reply_markup=main_menu())
 
-# ==========================================================
-# 👑 ADMIN MENU HANDLERS
-# ==========================================================
-
-@bot.message_handler(func=lambda m: m.text == "📊 TOTAL USERS")
+# অ্যাডমিন মেনু হ্যান্ডলার (শুধু সংক্ষিপ্ত, পূর্ণাঙ্গ আগের মত)
+@bot.message_handler(func=lambda m: m.text == "📊 মোট ইউজার")
 def admin_total_users(message):
     if not admin_sessions.get(message.from_user.id):
         return
     stats = db.get_stats()
-    bot.reply_to(message, f"📊 **Total Users:** {stats['total_users']}", parse_mode="Markdown")
+    bot.reply_to(message, f"📊 **মোট ইউজার:** {stats['total_users']}", parse_mode="Markdown")
 
-@bot.message_handler(func=lambda m: m.text == "🌍 TOTAL SITES")
+@bot.message_handler(func=lambda m: m.text == "🌍 মোট সাইট")
 def admin_total_sites(message):
     if not admin_sessions.get(message.from_user.id):
         return
     stats = db.get_stats()
-    bot.reply_to(message, f"🌍 **Total Sites:** {stats['total_sites']}", parse_mode="Markdown")
+    bot.reply_to(message, f"🌍 **মোট সাইট:** {stats['total_sites']}", parse_mode="Markdown")
 
-@bot.message_handler(func=lambda m: m.text == "🚫 BAN USER")
+@bot.message_handler(func=lambda m: m.text == "🚫 ইউজার ব্লক করো")
 def admin_ban_user(message):
     if not admin_sessions.get(message.from_user.id):
         return
-    bot.reply_to(message, "Enter the **User ID** to ban:", parse_mode="Markdown")
+    bot.reply_to(message, "যে ইউজারকে ব্লক করতে চাও তার **আইডি** দাও:", parse_mode="Markdown")
     bot.register_next_step_handler(message, process_ban)
 
 def process_ban(message):
-    admin_id = message.from_user.id
-    target_id = message.text.strip()
-    if not target_id.isdigit():
-        bot.reply_to(message, "❌ Invalid User ID! Must be numeric.")
+    target = message.text.strip()
+    if not target.isdigit():
+        bot.reply_to(message, "❌ আইডি সংখ্যা হতে হবে!")
         return
-    if db.ban_user(target_id, admin_id):
-        bot.reply_to(message, f"✅ User {target_id} banned!")
-    else:
-        bot.reply_to(message, "❌ Failed to ban user.")
+    db.ban_user(target, message.from_user.id)
+    bot.reply_to(message, f"✅ ইউজার {target} ব্লক করা হয়েছে!")
 
-@bot.message_handler(func=lambda m: m.text == "✅ UNBAN USER")
+@bot.message_handler(func=lambda m: m.text == "✅ ইউজার আনব্লক করো")
 def admin_unban_user(message):
     if not admin_sessions.get(message.from_user.id):
         return
-    bot.reply_to(message, "Enter the **User ID** to unban:", parse_mode="Markdown")
+    bot.reply_to(message, "যে ইউজারকে আনব্লক করতে চাও তার **আইডি** দাও:", parse_mode="Markdown")
     bot.register_next_step_handler(message, process_unban)
 
 def process_unban(message):
-    target_id = message.text.strip()
-    if not target_id.isdigit():
-        bot.reply_to(message, "❌ Invalid User ID! Must be numeric.")
+    target = message.text.strip()
+    if not target.isdigit():
+        bot.reply_to(message, "❌ আইডি সংখ্যা হতে হবে!")
         return
-    if db.unban_user(target_id):
-        bot.reply_to(message, f"✅ User {target_id} unbanned!")
-    else:
-        bot.reply_to(message, "❌ Failed to unban user.")
+    db.unban_user(target)
+    bot.reply_to(message, f"✅ ইউজার {target} আনব্লক করা হয়েছে!")
 
-@bot.message_handler(func=lambda m: m.text == "🔄 RESET LIMIT")
+@bot.message_handler(func=lambda m: m.text == "🔄 লিমিট রিসেট করো")
 def admin_reset_limit(message):
     if not admin_sessions.get(message.from_user.id):
         return
-    bot.reply_to(message, "Enter the **User ID** to reset limit:", parse_mode="Markdown")
+    bot.reply_to(message, "যে ইউজারের লিমিট রিসেট করতে চাও তার **আইডি** দাও:", parse_mode="Markdown")
     bot.register_next_step_handler(message, process_reset)
 
 def process_reset(message):
-    target_id = message.text.strip()
-    if not target_id.isdigit():
-        bot.reply_to(message, "❌ Invalid User ID! Must be numeric.")
+    target = message.text.strip()
+    if not target.isdigit():
+        bot.reply_to(message, "❌ আইডি সংখ্যা হতে হবে!")
         return
-    if db.reset_daily_count(target_id):
-        # Also clear cache
+    if db.reset_daily_count(target):
+        # ক্যাশ থেকেও মুছে ফেলা
         today = datetime.now().strftime("%Y-%m-%d")
-        cache_key = f"{target_id}_{today}"
-        daily_cache.pop(cache_key, None)
-        bot.reply_to(message, f"✅ Limit reset for user {target_id}")
+        daily_cache.pop(f"{target}_{today}", None)
+        bot.reply_to(message, f"✅ ইউজার {target} এর লিমিট রিসেট করা হয়েছে!")
     else:
-        bot.reply_to(message, "❌ Failed to reset limit.")
+        bot.reply_to(message, f"❌ ইউজার {target} খুঁজে পাওয়া যায়নি!")
 
-@bot.message_handler(func=lambda m: m.text == "📢 BROADCAST")
+@bot.message_handler(func=lambda m: m.text == "📢 ব্রডকাস্ট করো")
 def admin_broadcast(message):
     if not admin_sessions.get(message.from_user.id):
         return
-    bot.reply_to(message, "Enter the message to broadcast to all users:")
+    bot.reply_to(message, "সব ইউজারকে কী বার্তা পাঠাতে চাও?")
     bot.register_next_step_handler(message, process_broadcast)
 
 def process_broadcast(message):
-    broadcast_text = message.text
+    text = message.text
     users = db.get_all_users()
     sent = 0
-    failed = 0
     for uid in users.keys():
         try:
-            bot.send_message(int(uid), f"📢 **Broadcast:**\n\n{broadcast_text}", parse_mode="Markdown")
+            bot.send_message(int(uid), f"📢 **অ্যাডমিন বার্তা:**\n\n{text}", parse_mode="Markdown")
             sent += 1
             time.sleep(0.05)
         except:
-            failed += 1
-    bot.reply_to(message, f"✅ Broadcast sent to {sent} users. Failed: {failed}")
+            pass
+    bot.reply_to(message, f"✅ {sent} জন ইউজারে বার্তা পাঠানো হয়েছে!")
 
-@bot.message_handler(func=lambda m: m.text == "➕ ADD ADMIN")
+@bot.message_handler(func=lambda m: m.text == "➕ অ্যাডমিন যোগ করো")
 def admin_add_admin(message):
     if not admin_sessions.get(message.from_user.id) or message.from_user.id != ADMIN_ID:
         return
-    bot.reply_to(message, "Enter the **User ID** to make admin:", parse_mode="Markdown")
+    bot.reply_to(message, "নতুন অ্যাডমিনের **আইডি** দাও:", parse_mode="Markdown")
     bot.register_next_step_handler(message, process_add_admin)
 
 def process_add_admin(message):
-    target_id = message.text.strip()
-    if not target_id.isdigit():
-        bot.reply_to(message, "❌ Invalid User ID! Must be numeric.")
+    target = message.text.strip()
+    if not target.isdigit():
+        bot.reply_to(message, "❌ আইডি সংখ্যা হতে হবে!")
         return
-    if db.add_admin(target_id, message.from_user.id):
-        bot.reply_to(message, f"✅ User {target_id} is now admin!")
+    if db.add_admin(target, message.from_user.id):
+        bot.reply_to(message, f"✅ ইউজার {target} অ্যাডমিন হয়েছে!")
     else:
-        bot.reply_to(message, "❌ Failed to add admin.")
+        bot.reply_to(message, "❌ অ্যাডমিন যোগ ব্যর্থ!")
 
-@bot.message_handler(func=lambda m: m.text == "➖ REMOVE ADMIN")
+@bot.message_handler(func=lambda m: m.text == "➖ অ্যাডমিন রিমুভ করো")
 def admin_remove_admin(message):
     if not admin_sessions.get(message.from_user.id) or message.from_user.id != ADMIN_ID:
         return
-    bot.reply_to(message, "Enter the **User ID** to remove admin:", parse_mode="Markdown")
+    bot.reply_to(message, "যে অ্যাডমিনকে রিমুভ করতে চাও তার **আইডি** দাও:", parse_mode="Markdown")
     bot.register_next_step_handler(message, process_remove_admin)
 
 def process_remove_admin(message):
-    target_id = message.text.strip()
-    if not target_id.isdigit():
-        bot.reply_to(message, "❌ Invalid User ID! Must be numeric.")
+    target = message.text.strip()
+    if not target.isdigit():
+        bot.reply_to(message, "❌ আইডি সংখ্যা হতে হবে!")
         return
-    if db.remove_admin(target_id):
-        bot.reply_to(message, f"✅ Admin removed from user {target_id}")
+    if db.remove_admin(target):
+        bot.reply_to(message, f"✅ ইউজার {target} এর অ্যাডমিন ক্ষমতা কেড়ে নেওয়া হয়েছে!")
     else:
-        bot.reply_to(message, "❌ Failed to remove admin.")
+        bot.reply_to(message, "❌ অ্যাডমিন রিমুভ ব্যর্থ!")
 
-@bot.message_handler(func=lambda m: m.text == "📋 ADMIN LIST")
+@bot.message_handler(func=lambda m: m.text == "📋 অ্যাডমিন তালিকা")
 def admin_list(message):
     if not admin_sessions.get(message.from_user.id):
         return
     admins = db.get_admins()
-    text = f"👑 **Super Admin:** {ADMIN_ID}\n\n"
+    text = f"👑 **মূল অ্যাডমিন:** {ADMIN_ID}\n\n"
     if admins:
-        text += "📋 **Other Admins:**\n"
+        text += "📋 **অন্যান্য অ্যাডমিন:**\n"
         for aid in admins:
             text += f"• {aid}\n"
     else:
-        text += "📋 No other admins."
+        text += "📋 অন্য কোনো অ্যাডমিন নেই।"
     bot.reply_to(message, text, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda m: m.text == "🚪 LOGOUT")
+@bot.message_handler(func=lambda m: m.text == "🚪 লগআউট")
 def admin_logout(message):
     if message.from_user.id in admin_sessions:
         del admin_sessions[message.from_user.id]
-    bot.send_message(message.chat.id, "✅ **Logged out!**", parse_mode="Markdown", reply_markup=main_menu())
+    bot.send_message(message.chat.id, "✅ **লগআউট!**", parse_mode="Markdown", reply_markup=main_menu())
 
-@bot.message_handler(func=lambda m: m.text == "⬅️ MAIN MENU")
+@bot.message_handler(func=lambda m: m.text == "⬅️ মূল মেনু")
 def back_to_main(message):
-    bot.send_message(message.chat.id, "⬅️ **Main Menu**", parse_mode="Markdown", reply_markup=main_menu())
+    bot.send_message(message.chat.id, "⬅️ **মূল মেনু**", parse_mode="Markdown", reply_markup=main_menu())
 
 # ==========================================================
-# 🔄 FALLBACK HANDLER (MUST BE LAST)
+# 🔄 ফলব্যাক হ্যান্ডলার (সবশেষে)
 # ==========================================================
 @bot.message_handler(func=lambda m: True)
 def fallback_handler(message):
-    bot.reply_to(message, "❌ Please use the menu buttons!", reply_markup=main_menu())
+    bot.reply_to(message, "❌ দয়া করে মেনুর বাটন ব্যবহার করো!", reply_markup=main_menu())
 
 # ==========================================================
-# 🌐 HTTP SERVER FOR RENDER
+# 🌐 HTTP সার্ভার (Render-এর জন্য)
 # ==========================================================
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -1011,26 +948,31 @@ def run_http_server():
     port = int(os.getenv("PORT", 10000))
     server_address = ('0.0.0.0', port)
     httpd = HTTPServer(server_address, HealthCheckHandler)
-    print(f"🌐 HTTP Server running on port {port}")
+    print(f"🌐 HTTP সার্ভার চলছে পোর্ট {port}-এ")
     httpd.serve_forever()
 
 # ==========================================================
-# 🏁 START BOT
+# 🏁 বট চালু করা
 # ==========================================================
 if __name__ == "__main__":
+    # HTTP সার্ভার আলাদা থ্রেডে চালু
     threading.Thread(target=run_http_server, daemon=True).start()
+
+    # 409 কনফ্লিক্ট এড়াতে আগের কোনো ওয়েবহুক সরিয়ে দেওয়া
+    bot.remove_webhook()
+    time.sleep(1)
 
     try:
         bot_info = bot.get_me()
-        print(f"✅ Bot username: @{bot_info.username}")
+        print(f"✅ বট ইউজারনেম: @{bot_info.username}")
         print("=" * 70)
-        print("🟢 Bot is running... (Press Ctrl+C to stop)")
+        print("🟢 বট চলছে... (Ctrl+C দিয়ে বন্ধ করতে পারো)")
         print("=" * 70)
 
         bot.infinity_polling(timeout=60, long_polling_timeout=60)
 
     except KeyboardInterrupt:
-        print("\n👋 Bot stopped by user")
+        print("\n👋 বট বন্ধ করা হলো")
     except Exception as e:
-        print(f"❌ Fatal error: {e}")
+        print(f"❌ মারাত্মক ত্রুটি: {e}")
         traceback.print_exc()
