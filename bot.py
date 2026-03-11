@@ -1,5 +1,5 @@
 # ==========================================================
-# 🔥 টেলিগ্রাম হোস্টিং বট – উন্নত সংস্করণ v2 (সাইট নাম কাস্টমাইজেশন সহ)
+# 🔥 টেলিগ্রাম হোস্টিং বট – উন্নত সংস্করণ v2 (সংশোধিত)
 # ==========================================================
 # পরিবর্তনসমূহ:
 # ১. Vercel ডাইরেক্ট ফাইল আপলোড (গিট ইন্টিগ্রেশন ছাড়াই কাজ করবে)
@@ -12,7 +12,7 @@
 # ৮. GitHub ডাটাবেজ রিপোজিটরি এখন প্রাইভেট (নিরাপত্তা)
 # ৯. Vercel ফাইল আপলোড ব্যর্থ হলে তালিকায় যোগ না করা
 # ১০. ডোমেইন স্ট্যাটাস একবারেই API কল করে দেখা (দ্রুত)
-# ১১. ইউজার নিজের পছন্দের সাইট নাম দিতে পারবে (লাইভ URL-এ ব্যবহার)
+# ১১. ইউজার নিজে প্রজেক্টের নাম ও ডোমেইন দিতে পারে
 # ==========================================================
 
 import os
@@ -28,11 +28,11 @@ import json
 import hashlib
 import traceback
 import threading
-import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
 from datetime import datetime
 from telebot.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
+from telebot import util
 from dotenv import load_dotenv
 
 # ==========================================================
@@ -48,8 +48,8 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 ADMIN_ID = os.getenv("ADMIN_ID")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 GROUP_ID = os.getenv("GROUP_ID")
-CHANNEL_LINK = os.getenv("CHANNEL_LINK")
-GROUP_LINK = os.getenv("GROUP_LINK")
+CHANNEL_LINK = os.getenv("CHANNEL_LINK")  # নতুন
+GROUP_LINK = os.getenv("GROUP_LINK")      # নতুন
 
 # ফallback লিংক (যদি env না থাকে)
 if not CHANNEL_LINK:
@@ -58,7 +58,7 @@ if not GROUP_LINK:
     GROUP_LINK = "https://t.me/your_group"
 
 print("=" * 70)
-print("🔥 টেলিগ্রাম হোস্টিং বট v2 (কাস্টম সাইট নাম সহ)")
+print("🔥 টেলিগ্রাম হোস্টিং বট v2 (চ্যানেল/গ্রুপ ভেরিফিকেশন সহ)")
 print("=" * 70)
 
 # বাধ্যতামূলক ভেরিয়েবল চেক
@@ -373,10 +373,10 @@ def get_daily_count(user_id):
     return count
 
 # ==========================================================
-# 🌐 ডোমেইন সেশন ও অস্থায়ী ফাইল সংরক্ষণ
+# 🌐 ডোমেইন সেশন ও ডিপ্লয় সেশন
 # ==========================================================
 domain_sessions = {}
-user_temp_files = {}  # user_id -> temp_zip_path
+deploy_sessions = {}  # নতুন: জিপ আপলোডের পর প্রজেক্ট নাম ও ডোমেইনের জন্য
 
 # ==========================================================
 # 🎛 মেনু তৈরি
@@ -428,7 +428,8 @@ def is_verified(user_id):
 @bot.message_handler(commands=['start'])
 def start_command(message):
     user_id = message.from_user.id
-    username = message.from_user.first_name
+    raw_username = message.from_user.first_name
+    safe_username = util.escape_markdown(raw_username)
 
     if not is_verified(user_id):
         markup = InlineKeyboardMarkup()
@@ -445,21 +446,21 @@ def start_command(message):
         return
 
     welcome_text = (
-        f"👋 **স্বাগতম {username}!**\n\n"
+        f"👋 **স্বাগতম {safe_username}!**\n\n"
         f"📌 এই বটের মাধ্যমে আপনি বিনামূল্যে আপনার ওয়েবসাইট Vercel-এ হোস্ট করতে পারবেন।\n"
         f"✅ **দৈনিক লিমিট:** ৫টি সাইট\n\n"
         f"📋 **ব্যবহারের নিয়ম:**\n"
         f"১️⃣ আপনার ওয়েবসাইটের ফাইলগুলো জিপ করো (অবশ্যই index.html থাকতে হবে)\n"
         f"২️⃣ জিপ ফাইলটি এখানে আপলোড করো\n"
-        f"৩️⃣ বট তোমার পছন্দের সাইট নাম জিজ্ঞেস করবে (যেমন: mysite)\n"
+        f"৩️⃣ বট তোমাকে প্রজেক্টের নাম ও কাস্টম ডোমেইন জিজ্ঞেস করবে\n"
         f"৪️⃣ তারপর স্বয়ংক্রিয়ভাবে GitHub ও Vercel-এ ডিপ্লয় করবে\n"
-        f"৫️⃣ তুমি সাথে সাথে লাইভ লিংক পাবে: https://<তোমার-নাম>.vercel.app\n\n"
+        f"৫️⃣ তুমি সাথে সাথে লাইভ লিংক পাবে\n\n"
         f"⚠️ **সর্বোচ্চ ফাইল সাইজ:** ৫০MB"
     )
     bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=main_menu())
 
 # ==========================================================
-# 📦 জিপ ফাইল হ্যান্ডলার (উন্নত - সাইট নাম চাওয়া)
+# 📦 জিপ ফাইল হ্যান্ডলার (প্রথম ধাপ: জিপ এক্সট্র্যাক্ট)
 # ==========================================================
 def find_index_root(base_dir):
     """
@@ -477,34 +478,6 @@ def find_index_root(base_dir):
 
     return None
 
-def is_valid_site_name(name):
-    """শুধু ছোট হাতের অক্ষর ও সংখ্যা অনুমোদিত, দৈর্ঘ্য ৩-৩০"""
-    if not name:
-        return False
-    if not re.match(r'^[a-z0-9]{3,30}$', name):
-        return False
-    return True
-
-def is_vercel_project_available(project_name):
-    """Vercel-এ এই নামে প্রজেক্ট আছে কিনা চেক করে (থাকলে False)"""
-    headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
-    try:
-        r = requests.get(
-            f"https://api.vercel.com/v9/projects/{project_name}",
-            headers=headers,
-            timeout=10
-        )
-        if r.status_code == 200:
-            return False  # প্রজেক্ট ইতিমধ্যে আছে
-        elif r.status_code == 404:
-            return True   # পাওয়া যায়নি, মানে নামটি ফ্রি
-        else:
-            # অন্য কোনো এরর হলে আমরা ধরে নেব নামটি ব্যবহার না করাই ভালো
-            print(f"⚠️ Vercel project check failed: {r.status_code}")
-            return False
-    except Exception as e:
-        print(f"⚠️ Vercel project check error: {e}")
-        return False
 
 @bot.message_handler(content_types=['document'])
 def handle_zip(message):
@@ -533,160 +506,167 @@ def handle_zip(message):
         file_info = bot.get_file(message.document.file_id)
         downloaded = bot.download_file(file_info.file_path)
 
-        # অস্থায়ী ফাইল সংরক্ষণ
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp:
-            tmp.write(downloaded)
-            tmp_path = tmp.name
+        bot.edit_message_text("📦 জিপ ফাইল এক্সট্র্যাক্ট করা হচ্ছে...", message.chat.id, status_msg.message_id)
 
-        user_temp_files[user_id] = tmp_path
+        # tempfile.mkdtemp() ব্যবহার করছি, যা নিজে ডিলিট হয় না, পরে আমরা ডিলিট করব
+        temp_dir = tempfile.mkdtemp()
+        with zipfile.ZipFile(BytesIO(downloaded)) as zf:
+            zf.extractall(temp_dir)
+
+        root_dir = find_index_root(temp_dir)
+        if root_dir is None:
+            bot.edit_message_text(
+                "❌ **index.html ফাইল পাওয়া যায়নি!**\n\n"
+                "📌 নিশ্চিত করো যে তোমার জিপ ফাইলে `index.html` আছে।\n"
+                "💡 ফোল্ডারের ভেতরে থাকলেও কাজ করবে (১ লেভেল পর্যন্ত)।",
+                message.chat.id, status_msg.message_id,
+                parse_mode="Markdown"
+            )
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return
+
+        # সেশন সংরক্ষণ
+        deploy_sessions[user_id] = {
+            "temp_dir": temp_dir,
+            "root_dir": root_dir,
+            "status_msg_id": status_msg.message_id,
+            "chat_id": message.chat.id
+        }
 
         bot.edit_message_text(
-            "📝 এখন সাইটের নাম দাও (শুধু ছোট হাতের ইংরেজি অক্ষর ও সংখ্যা, যেমন: mysite123)\n"
-            "⏳ নামটি ৩-৩০ অক্ষরের মধ্যে হতে হবে এবং Vercel-এ অনন্য হতে হবে।",
+            "🔤 এখন তোমার প্রজেক্টের নাম লিখো (শুধু ছোট হাতের অক্ষর, সংখ্যা ও হাইফেন থাকতে পারে, যেমন: my-awesome-site):",
             message.chat.id,
             status_msg.message_id,
             parse_mode="Markdown"
         )
-
-        # পরবর্তী ধাপ: সাইট নাম গ্রহণ
-        bot.register_next_step_handler(message, process_site_name, user_id, tmp_path)
-
-    except Exception as e:
-        bot.edit_message_text(f"❌ জিপ ডাউনলোড ব্যর্থ: {str(e)[:150]}", message.chat.id, status_msg.message_id)
-        traceback.print_exc()
-
-def process_site_name(message, user_id, tmp_path):
-    """ইউজারের দেওয়া সাইট নাম যাচাই ও ডিপ্লয় শুরু"""
-    site_name = message.text.strip().lower()
-
-    # প্রথমে যাচাই করি নামটি সঠিক ফরম্যাটে আছে কিনা
-    if not is_valid_site_name(site_name):
-        bot.reply_to(
-            message,
-            "❌ **অবৈধ নাম!**\n\n"
-            "📌 নামটি হতে হবে:\n"
-            "• শুধু ছোট হাতের ইংরেজি অক্ষর (a-z)\n"
-            "• সংখ্যা (0-9)\n"
-            "• দৈর্ঘ্য ৩-৩০ অক্ষর\n\n"
-            "আবার চেষ্টা করো (যেমন: myblog123):"
-        )
-        # আবার নাম চাও, কিন্তু পুরনো ফাইলই থাকবে
-        bot.register_next_step_handler(message, process_site_name, user_id, tmp_path)
-        return
-
-    # Vercel-এ নামটি আগে থেকে আছে কিনা চেক
-    if not is_vercel_project_available(site_name):
-        bot.reply_to(
-            message,
-            f"❌ **{site_name}** নামটি ইতিমধ্যে Vercel-এ ব্যবহৃত হচ্ছে!\n\n"
-            "📌 অনুগ্রহ করে অন্য একটি নাম দাও:"
-        )
-        bot.register_next_step_handler(message, process_site_name, user_id, tmp_path)
-        return
-
-    # সবকিছু ঠিক থাকলে ডিপ্লয় প্রক্রিয়া শুরু
-    status_msg = bot.reply_to(message, f"⏳ **{site_name}** নামে সাইট তৈরি করা হচ্ছে...")
-
-    try:
-        # জিপ ফাইল এক্সট্র্যাক্ট
-        bot.edit_message_text("📦 জিপ ফাইল এক্সট্র্যাক্ট করা হচ্ছে...", message.chat.id, status_msg.message_id)
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with zipfile.ZipFile(tmp_path, 'r') as zf:
-                zf.extractall(temp_dir)
-
-            root_dir = find_index_root(temp_dir)
-            if root_dir is None:
-                bot.edit_message_text(
-                    "❌ **index.html ফাইল পাওয়া যায়নি!**\n\n"
-                    "📌 নিশ্চিত করো যে তোমার জিপ ফাইলে `index.html` আছে।\n"
-                    "💡 ফোল্ডারের ভেতরে থাকলেও কাজ করবে (১ লেভেল পর্যন্ত)।",
-                    message.chat.id, status_msg.message_id,
-                    parse_mode="Markdown"
-                )
-                # অস্থায়ী ফাইল মুছে ফেল
-                os.unlink(tmp_path)
-                user_temp_files.pop(user_id, None)
-                return
-
-            # ======= ধাপ ১: GitHub রিপোজিটরি =======
-            bot.edit_message_text("🔧 GitHub রিপোজিটরি তৈরি হচ্ছে...", message.chat.id, status_msg.message_id)
-
-            github_ok, github_url = create_github_repo(site_name, root_dir)
-            if not github_ok:
-                bot.edit_message_text(
-                    "❌ **GitHub রিপোজিটরি তৈরি ব্যর্থ!**\n\n"
-                    "🔑 তোমার GitHub Token চেক করো।",
-                    message.chat.id, status_msg.message_id,
-                    parse_mode="Markdown"
-                )
-                os.unlink(tmp_path)
-                user_temp_files.pop(user_id, None)
-                return
-
-            # ======= ধাপ ২: Vercel ডিপ্লয় =======
-            bot.edit_message_text(
-                f"🚀 Vercel-এ ডিপ্লয় হচ্ছে...\n\n"
-                f"⏳ ফাইল আপলোড ও বিল্ড চলছে, কিছুক্ষণ অপেক্ষা করো...\n"
-                f"🌐 তোমার সাইটের URL হবে: https://{site_name}.vercel.app",
-                message.chat.id, status_msg.message_id
-            )
-
-            live_url = deploy_to_vercel(site_name, root_dir)
-            if not live_url:
-                # Vercel ব্যর্থ হলে GitHub রিপো ডিলিট
-                delete_github_repo(site_name)
-                bot.edit_message_text(
-                    "❌ **Vercel ডিপ্লয় ব্যর্থ!**\n\n"
-                    "🔑 সম্ভাব্য কারণ:\n"
-                    "• Vercel টোকেন ভুল বা মেয়াদ উত্তীর্ণ\n"
-                    "• ফাইলে সমস্যা আছে\n\n"
-                    "📌 ঠিক করার উপায়:\n"
-                    "১. https://vercel.com/account/tokens এ যাও\n"
-                    "২. নতুন টোকেন বানাও (full access)\n"
-                    "৩. Render Dashboard-এ VERCEL_TOKEN আপডেট করো\n"
-                    "৪. আবার চেষ্টা করো",
-                    message.chat.id,
-                    status_msg.message_id,
-                    parse_mode="Markdown"
-                )
-                os.unlink(tmp_path)
-                user_temp_files.pop(user_id, None)
-                return
-
-            # সফল হলে কাউন্ট বাড়াও ও ডাটাবেজে সেভ করো
-            used_now = increment_daily_count(user_id)
-            db.add_site(user_id, site_name, {"url": live_url, "github": github_url})
-
-            success_text = (
-                f"✅ **ডিপ্লয় সফল হয়েছে!** 🎉\n\n"
-                f"🌐 **লাইভ ইউআরএল:**\n{live_url}\n\n"
-                f"📂 **GitHub রিপোজিটরি:**\n{github_url}\n\n"
-                f"📊 **আজকে ব্যবহার:** {used_now}/৫\n\n"
-                f"💡 **পরবর্তী ধাপ:**\n"
-                f"• '🌐 ডোমেইন ম্যানেজ করো' দিয়ে কাস্টম ডোমেইন যোগ করতে পারো\n"
-                f"• '📂 আমার সাইট' দিয়ে সব সাইট দেখতে পারো\n"
-                f"• '🗑 সাইট ডিলিট করো' দিয়ে সাইট মুছে ফেলতে পারো"
-            )
-
-            bot.edit_message_text(
-                success_text,
-                message.chat.id,
-                status_msg.message_id,
-                parse_mode="Markdown",
-                disable_web_page_preview=True
-            )
+        # পরবর্তী ধাপের জন্য register_next_step_handler ব্যবহার না করে আমরা deploy_sessions দিয়ে ট্র্যাক করব এবং মেসেজ হ্যান্ডলার দিয়ে শুনব।
 
     except zipfile.BadZipFile:
         bot.edit_message_text("❌ জিপ ফাইল নষ্ট বা ভুল ফরম্যাট!", message.chat.id, status_msg.message_id)
     except Exception as e:
         bot.edit_message_text(f"❌ অপ্রত্যাশিত ত্রুটি: {str(e)[:150]}", message.chat.id, status_msg.message_id)
         print(traceback.format_exc())
+
+
+# ==========================================================
+# 📝 প্রজেক্ট নাম হ্যান্ডলার
+# ==========================================================
+@bot.message_handler(func=lambda m: m.chat.id in deploy_sessions and 'project_name' not in deploy_sessions[m.chat.id])
+def handle_project_name(message):
+    user_id = message.chat.id
+    session = deploy_sessions.get(user_id)
+    if not session:
+        return
+
+    project_name = message.text.strip().lower()
+    # প্রজেক্ট নাম ভ্যালিডেশন: শুধু a-z, 0-9, হাইফেন, এবং ৩-৩০ অক্ষর
+    import re
+    if not re.match(r'^[a-z0-9][a-z0-9-]{2,29}$', project_name) or '--' in project_name or project_name.endswith('-'):
+        bot.reply_to(message, "❌ প্রজেক্ট নাম সঠিক নয়। শুধু ছোট হাতের অক্ষর, সংখ্যা ও হাইফেন ব্যবহার করো। নাম শুরু ও শেষ অক্ষর বা সংখ্যা দিয়ে, এবং দৈর্ঘ্য ৩-৩০। আবার লিখো:")
+        return
+
+    session['project_name'] = project_name
+    bot.reply_to(message, "🌐 এখন তোমার কাস্টম ডোমেইন লিখো (যদি না চাও, 'না' লিখো):\n📌 উদাহরণ: `example.com` বা `www.example.com`", parse_mode="Markdown")
+
+@bot.message_handler(func=lambda m: m.chat.id in deploy_sessions and 'project_name' in deploy_sessions[m.chat.id] and 'domain' not in deploy_sessions[m.chat.id])
+def handle_domain(message):
+    user_id = message.chat.id
+    session = deploy_sessions.get(user_id)
+    if not session:
+        return
+
+    domain_input = message.text.strip().lower()
+    if domain_input == "না" or domain_input == "skip":
+        session['domain'] = None
+    else:
+        # প্রোটোকল থাকলে সরাও
+        domain = domain_input.replace("https://", "").replace("http://", "").rstrip("/")
+        # ব্যাসিক ভ্যালিডেশন
+        if not domain or '.' not in domain or ' ' in domain or len(domain) < 3:
+            bot.reply_to(message, "❌ সঠিক ডোমেইন নাম দাও!\n📌 উদাহরণ: `example.com` বা `www.example.com`\nআবার লিখো:", parse_mode="Markdown")
+            return
+        session['domain'] = domain
+
+    # সব তথ্য পাওয়া গেছে, এখন ডিপ্লয় শুরু করি
+    bot.reply_to(message, "⏳ ডিপ্লয় শুরু হচ্ছে... দয়া করে অপেক্ষা করুন।")
+
+    # সেশন থেকে তথ্য নিই
+    project_name = session['project_name']
+    domain = session.get('domain')
+    temp_dir = session['temp_dir']
+    root_dir = session['root_dir']
+    status_msg_id = session['status_msg_id']
+    chat_id = session['chat_id']
+
+    # প্রোজেক্টের নাম অনন্য করতে ইউজার আইডি ও টাইমস্ট্যাম্প যোগ করি (কারণ একই নাম একাধিক ইউজার দিতে পারে)
+    unique_project = f"{project_name}-{user_id}-{int(time.time())}"
+
+    try:
+        # GitHub রিপোজিটরি তৈরি
+        bot.edit_message_text("🔧 GitHub রিপোজিটরি তৈরি হচ্ছে...", chat_id, status_msg_id)
+        github_ok, github_url = create_github_repo(unique_project, root_dir)
+        if not github_ok:
+            bot.edit_message_text("❌ GitHub রিপোজিটরি তৈরি ব্যর্থ! টোকেন চেক করো।", chat_id, status_msg_id)
+            return
+
+        # Vercel ডিপ্লয়
+        bot.edit_message_text("🚀 Vercel-এ ডিপ্লয় হচ্ছে...\n\n⏳ ফাইল আপলোড ও বিল্ড চলছে...", chat_id, status_msg_id)
+        live_url = deploy_to_vercel(unique_project, root_dir)
+        if not live_url:
+            delete_github_repo(unique_project)
+            bot.edit_message_text("❌ Vercel ডিপ্লয় ব্যর্থ! টোকেন চেক করো।", chat_id, status_msg_id)
+            return
+
+        # ডোমেইন থাকলে Vercel-এ যোগ করি
+        if domain:
+            headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
+            r = requests.post(
+                f"https://api.vercel.com/v9/projects/{unique_project}/domains",
+                headers=headers,
+                json={"name": domain},
+                timeout=30
+            )
+            if r.status_code in [200, 201]:
+                db.add_domain_to_site(user_id, unique_project, domain)
+                # DNS নির্দেশনা তৈরি
+                parts = domain.split('.')
+                is_apex = len(parts) == 2
+                if is_apex:
+                    dns_instruction = (
+                        f"\n\n📌 **DNS কনফিগারেশন:**\n"
+                        f"📍 A রেকর্ড: `@` → `76.76.21.21`\n"
+                        f"📍 CNAME (যদি A না চলে): `@` → `cname.vercel-dns.com`"
+                    )
+                else:
+                    sub = parts[0]
+                    dns_instruction = f"\n\n📌 **DNS কনফিগারেশন:**\n📍 CNAME: `{sub}` → `cname.vercel-dns.com`"
+            else:
+                dns_instruction = f"\n\n⚠️ ডোমেইন যোগ ব্যর্থ: {r.text[:100]}"
+        else:
+            dns_instruction = ""
+
+        # ডাটাবেজে সাইট যোগ
+        used_now = increment_daily_count(user_id)
+        db.add_site(user_id, unique_project, {"url": live_url, "github": github_url})
+
+        success_text = (
+            f"✅ **ডিপ্লয় সফল হয়েছে!** 🎉\n\n"
+            f"🌐 **লাইভ ইউআরএল:**\n{live_url}\n\n"
+            f"📂 **GitHub রিপোজিটরি:**\n{github_url}\n\n"
+            f"📊 **আজকে ব্যবহার:** {used_now}/৫\n"
+            f"{dns_instruction}"
+        )
+
+        bot.edit_message_text(success_text, chat_id, status_msg_id, parse_mode="Markdown", disable_web_page_preview=True)
+
+    except Exception as e:
+        bot.edit_message_text(f"❌ ডিপ্লয় প্রক্রিয়ায় ত্রুটি: {str(e)[:150]}", chat_id, status_msg_id)
+        print(traceback.format_exc())
     finally:
-        # অস্থায়ী ফাইল মুছে ফেল
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        user_temp_files.pop(user_id, None)
+        # টেম্প ডিরেক্টরি মুছে ফেলি
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        # সেশন ক্লিয়ার
+        deploy_sessions.pop(user_id, None)
 
 # ==========================================================
 # 🔧 গিটহাব রিপোজিটরি তৈরি ফাংশন (vercel.json সহ)
@@ -694,17 +674,14 @@ def process_site_name(message, user_id, tmp_path):
 def create_github_repo(repo_name, local_path):
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
     try:
-        # টোকেন যাচাই
         test = requests.get("https://api.github.com/user", headers=headers, timeout=10)
         if test.status_code != 200:
             print("❌ GitHub টোকেন ইনভ্যালিড")
             return False, None
 
-        # রিপো তৈরি
-        data = {"name": repo_name, "private": False}  # সাইটের ফাইল পাবলিক রাখা হলো
+        data = {"name": repo_name, "private": False}  # সাইটের জন্য পাবলিক
         r = requests.post("https://api.github.com/user/repos", headers=headers, json=data, timeout=30)
         if r.status_code == 422:
-            # নাম ইতিমধ্যে GitHub-এ থাকলে, একটি সাফিক্স যোগ করি
             repo_name = f"{repo_name}-{int(time.time())}"
             data["name"] = repo_name
             r = requests.post("https://api.github.com/user/repos", headers=headers, json=data, timeout=30)
@@ -712,17 +689,14 @@ def create_github_repo(repo_name, local_path):
             print(f"❌ GitHub রিপো তৈরি ব্যর্থ: {r.status_code}")
             return False, None
 
-        time.sleep(1)  # রিপো ইনিশিয়ালাইজ হওয়ার জন্য অপেক্ষা
+        time.sleep(1)
 
-        # vercel.json যোগ করো (স্ট্যাটিক সাইট কনফিগ)
         vercel_config = {
             "version": 2,
             "cleanUrls": True,
             "trailingSlash": False
         }
-        vercel_content = base64.b64encode(
-            json.dumps(vercel_config, indent=2).encode()
-        ).decode()
+        vercel_content = base64.b64encode(json.dumps(vercel_config, indent=2).encode()).decode()
         vercel_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/contents/vercel.json"
         vercel_data = {
             "message": "Add vercel.json for static site config",
@@ -731,7 +705,6 @@ def create_github_repo(repo_name, local_path):
         }
         requests.put(vercel_url, headers=headers, json=vercel_data, timeout=30)
 
-        # ফাইল আপলোড (ওয়েবসাইট ফাইলসমূহ)
         for root, dirs, files in os.walk(local_path):
             dirs[:] = [d for d in dirs if not d.startswith('.') and d != '__MACOSX']
             for file in files:
@@ -763,22 +736,16 @@ def delete_github_repo(repo_name):
         return False
 
 # ==========================================================
-# 🚀 Vercel ডিপ্লয় ফাংশন (ডাইরেক্ট ফাইল আপলোড - গিট ছাড়া)
+# 🚀 Vercel ডিপ্লয় ফাংশন (ডাইরেক্ট ফাইল আপলোড)
 # ==========================================================
 def deploy_to_vercel(project_name, local_path):
-    """
-    Vercel-এর File Upload API ব্যবহার করে ডাইরেক্ট ডিপ্লয় করে।
-    GitHub integration লাগবে না।
-    """
     headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
     try:
-        # ১. টোকেন যাচাই
         test = requests.get("https://api.vercel.com/v2/user", headers=headers, timeout=10)
         if test.status_code != 200:
             print(f"❌ Vercel টোকেন ইনভ্যালিড: {test.status_code}")
             return None
 
-        # ২. প্রতিটি ফাইল Vercel blob store-এ আপলোড করো
         files_list = []
         for root, dirs, filenames in os.walk(local_path):
             dirs[:] = [d for d in dirs if not d.startswith('.') and d != '__MACOSX']
@@ -787,10 +754,8 @@ def deploy_to_vercel(project_name, local_path):
                     continue
                 filepath = os.path.join(root, fn)
                 rel_path = os.path.relpath(filepath, local_path).replace("\\", "/")
-
                 with open(filepath, 'rb') as f:
                     content = f.read()
-
                 sha1 = hashlib.sha1(content).hexdigest()
 
                 upload_headers = {
@@ -818,7 +783,6 @@ def deploy_to_vercel(project_name, local_path):
             print("❌ কোনো ফাইল পাওয়া যায়নি")
             return None
 
-        # vercel.json যোগ করো (যদি ইউজারের ফাইলে না থাকে)
         has_vercel_json = any(f["file"] == "vercel.json" for f in files_list)
         if not has_vercel_json:
             vc_content = json.dumps({"version": 2}, indent=2).encode()
@@ -841,7 +805,6 @@ def deploy_to_vercel(project_name, local_path):
                     "size": len(vc_content)
                 })
 
-        # ৩. ডিপ্লয়মেন্ট তৈরি করো
         deploy_payload = {
             "name": project_name,
             "files": files_list,
@@ -866,11 +829,6 @@ def deploy_to_vercel(project_name, local_path):
         deploy_id = deploy_data.get("id")
         deploy_url = deploy_data.get("url", "")
 
-        print(f"🚀 Vercel ডিপ্লয়মেন্ট তৈরি হয়েছে: {deploy_id}")
-        print(f"   URL: {deploy_url}")
-        print(f"   State: {deploy_data.get('readyState', 'unknown')}")
-
-        # ৪. ডিপ্লয়মেন্ট READY হওয়ার জন্য অপেক্ষা (সর্বোচ্চ ৩ মিনিট)
         if deploy_id:
             for attempt in range(36):
                 time.sleep(5)
@@ -883,7 +841,6 @@ def deploy_to_vercel(project_name, local_path):
                     state = check.json().get("readyState", "")
                     if state == "READY":
                         actual_url = check.json().get("url", deploy_url)
-                        print(f"✅ ডিপ্লয়মেন্ট READY: https://{actual_url}")
                         return f"https://{actual_url}"
                     elif state in ["ERROR", "CANCELED"]:
                         error_msg = check.json().get("errorMessage", "Unknown error")
@@ -893,10 +850,8 @@ def deploy_to_vercel(project_name, local_path):
                         if attempt % 6 == 0:
                             print(f"   ⏳ অপেক্ষা... ({state})")
 
-        # Fallback: URL পাওয়া গেলে সেটা দাও
         if deploy_url:
             return f"https://{deploy_url}"
-
         return None
 
     except Exception as e:
@@ -919,13 +874,15 @@ def my_sites_menu(message):
         return
     text = "🌐 **তোমার সাইটসমূহ:**\n\n"
     for name, data in sites.items():
-        text += f"📁 **{name}**\n"
+        safe_name = util.escape_markdown(name)
+        text += f"📁 **{safe_name}**\n"
         text += f"🔗 {data.get('url', 'N/A')}\n"
         if data.get('github'):
             text += f"📂 {data.get('github')}\n"
         domains = data.get('domains', [])
         if domains:
-            text += f"🌐 ডোমেইন: {', '.join(domains)}\n"
+            escaped_domains = [util.escape_markdown(d) for d in domains]
+            text += f"🌐 ডোমেইন: {', '.join(escaped_domains)}\n"
         text += f"📅 তৈরি: {data.get('created_at', '')[:10]}\n\n"
     bot.send_message(message.chat.id, text, parse_mode="Markdown", disable_web_page_preview=True)
 
@@ -948,9 +905,8 @@ def domain_manage_menu(message):
 
     markup = InlineKeyboardMarkup(row_width=1)
     for i, name in enumerate(sites_list):
-        short_url = sites[name].get('url', '')
-        label = f"🌐 {name}"
-        markup.add(InlineKeyboardButton(label, callback_data=f"dom_site_{i}"))
+        safe_name = util.escape_markdown(name)
+        markup.add(InlineKeyboardButton(f"🌐 {safe_name}", callback_data=f"dom_site_{i}"))
     markup.add(InlineKeyboardButton("❌ বাতিল", callback_data="dom_cancel"))
 
     bot.send_message(
@@ -963,7 +919,6 @@ def domain_manage_menu(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('dom_'))
 def domain_callback_router(call):
-    """সব ডোমেইন-সম্পর্কিত callback একটি হ্যান্ডলারে"""
     data = call.data
     user_id = call.from_user.id
 
@@ -977,7 +932,6 @@ def domain_callback_router(call):
         bot.answer_callback_query(call.id, "⚠️ সেশন শেষ! আবার '🌐 ডোমেইন ম্যানেজ করো' চাপো।")
         return
 
-    # ===== সাইট নির্বাচন =====
     if data.startswith("dom_site_"):
         try:
             idx = int(data.replace("dom_site_", ""))
@@ -996,7 +950,7 @@ def domain_callback_router(call):
             InlineKeyboardButton("⬅️ ফিরে যাও", callback_data="dom_cancel")
         )
         bot.edit_message_text(
-            f"🌐 **{site_name}** সাইটের ডোমেইন ম্যানেজমেন্ট:\n\nকী করতে চাও?",
+            f"🌐 **{util.escape_markdown(site_name)}** সাইটের ডোমেইন ম্যানেজমেন্ট:\n\nকী করতে চাও?",
             call.message.chat.id,
             call.message.message_id,
             parse_mode="Markdown",
@@ -1004,13 +958,12 @@ def domain_callback_router(call):
         )
         return
 
-    # ===== ডোমেইন যোগ করো =====
     if data == "dom_opt_add":
         project = session.get("site")
         if not project:
             return
         bot.edit_message_text(
-            f"➕ **{project}** সাইটে ডোমেইন যোগ করো\n\n"
+            f"➕ **{util.escape_markdown(project)}** সাইটে ডোমেইন যোগ করো\n\n"
             "তোমার ডোমেইন নাম লিখো:\n"
             "📌 উদাহরণ: `example.com` অথবা `www.example.com`",
             call.message.chat.id,
@@ -1020,7 +973,6 @@ def domain_callback_router(call):
         bot.register_next_step_handler(call.message, lambda m: process_add_domain(m, project))
         return
 
-    # ===== ডোমেইন দেখো ও স্ট্যাটাস =====
     if data == "dom_opt_view":
         project = session.get("site")
         if not project:
@@ -1028,7 +980,6 @@ def domain_callback_router(call):
         view_domain_status(call, project)
         return
 
-    # ===== ডোমেইন সরানোর তালিকা =====
     if data == "dom_opt_rem":
         project = session.get("site")
         if not project:
@@ -1036,7 +987,6 @@ def domain_callback_router(call):
         show_removable_domains(call, project)
         return
 
-    # ===== নির্দিষ্ট ডোমেইন সরাও =====
     if data.startswith("dom_rmsel_"):
         try:
             idx = int(data.replace("dom_rmsel_", ""))
@@ -1054,11 +1004,8 @@ def domain_callback_router(call):
 
 
 def process_add_domain(message, project):
-    """ডোমেইন যোগ করার প্রসেস"""
     domain = message.text.strip().lower()
-
     domain = domain.replace("https://", "").replace("http://", "").rstrip("/")
-
     if not domain or '.' not in domain or ' ' in domain or len(domain) < 3:
         bot.reply_to(message, "❌ সঠিক ডোমেইন নাম দাও!\n\n📌 উদাহরণ: `example.com` বা `www.example.com`", parse_mode="Markdown")
         return
@@ -1074,13 +1021,11 @@ def process_add_domain(message, project):
 
         if r.status_code in [200, 201]:
             db.add_domain_to_site(message.from_user.id, project, domain)
-
             parts = domain.split('.')
             is_apex = len(parts) == 2
-
             if is_apex:
                 dns_text = (
-                    f"✅ **ডোমেইন `{domain}` সফলভাবে যোগ হয়েছে!** 🎉\n\n"
+                    f"✅ **ডোমেইন `{util.escape_markdown(domain)}` সফলভাবে যোগ হয়েছে!** 🎉\n\n"
                     f"📌 **DNS কনফিগারেশন (তোমার ডোমেইন প্রোভাইডারে সেট করো):**\n\n"
                     f"**অপশন ১ (A Record — Apex Domain-এর জন্য সেরা):**\n"
                     f"  📍 Type: `A`\n"
@@ -1096,7 +1041,7 @@ def process_add_domain(message, project):
             else:
                 subdomain_name = parts[0]
                 dns_text = (
-                    f"✅ **ডোমেইন `{domain}` সফলভাবে যোগ হয়েছে!** 🎉\n\n"
+                    f"✅ **ডোমেইন `{util.escape_markdown(domain)}` সফলভাবে যোগ হয়েছে!** 🎉\n\n"
                     f"📌 **DNS কনফিগারেশন:**\n\n"
                     f"  📍 Type: `CNAME`\n"
                     f"  📍 Name: `{subdomain_name}`\n"
@@ -1104,13 +1049,12 @@ def process_add_domain(message, project):
                     f"⏱ DNS পরিবর্তন কার্যকর হতে ১-৪৮ ঘন্টা লাগতে পারে।\n"
                     f"✅ 'ডোমেইন দেখো' দিয়ে স্ট্যাটাস চেক করতে পারবে।"
                 )
-
             bot.reply_to(message, dns_text, parse_mode="Markdown")
 
         elif r.status_code == 409:
             bot.reply_to(
                 message,
-                f"⚠️ ডোমেইন `{domain}` আগে থেকেই এই প্রোজেক্টে যোগ করা আছে!",
+                f"⚠️ ডোমেইন `{util.escape_markdown(domain)}` আগে থেকেই এই প্রোজেক্টে যোগ করা আছে!",
                 parse_mode="Markdown"
             )
         elif r.status_code == 400:
@@ -1122,7 +1066,7 @@ def process_add_domain(message, project):
             if "already used" in error_detail.lower():
                 bot.reply_to(
                     message,
-                    f"❌ ডোমেইন `{domain}` অন্য একটি Vercel প্রোজেক্টে ব্যবহৃত হচ্ছে!\n\n"
+                    f"❌ ডোমেইন `{util.escape_markdown(domain)}` অন্য একটি Vercel প্রোজেক্টে ব্যবহৃত হচ্ছে!\n\n"
                     f"📌 আগে সেখান থেকে সরাও, তারপর এখানে যোগ করো।",
                     parse_mode="Markdown"
                 )
@@ -1148,7 +1092,6 @@ def process_add_domain(message, project):
 
 
 def view_domain_status(call, project):
-    """সাইটের ডোমেইনসমূহ ও তাদের স্ট্যাটাস দেখাও (অপ্টিমাইজড)"""
     user_id = call.from_user.id
     sites = db.get_user_sites(user_id)
     site = sites.get(project, {})
@@ -1161,7 +1104,7 @@ def view_domain_status(call, project):
             InlineKeyboardButton("⬅️ ফিরে যাও", callback_data="dom_cancel")
         )
         bot.edit_message_text(
-            f"📋 **{project}** সাইটে কোনো কাস্টম ডোমেইন নেই।\n\n"
+            f"📋 **{util.escape_markdown(project)}** সাইটে কোনো কাস্টম ডোমেইন নেই।\n\n"
             f"🔗 ডিফল্ট URL: {site.get('url', 'N/A')}",
             call.message.chat.id,
             call.message.message_id,
@@ -1171,7 +1114,7 @@ def view_domain_status(call, project):
         return
 
     headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
-    text = f"📋 **{project}** সাইটের ডোমেইনসমূহ:\n\n"
+    text = f"📋 **{util.escape_markdown(project)}** সাইটের ডোমেইনসমূহ:\n\n"
 
     try:
         r = requests.get(
@@ -1189,6 +1132,7 @@ def view_domain_status(call, project):
         print(f"ডোমেইন API কল ব্যর্থ: {e}")
 
     for domain in domains:
+        safe_domain = util.escape_markdown(domain)
         if domain in domain_dict:
             d = domain_dict[domain]
             verified = d.get("verified", False)
@@ -1204,7 +1148,7 @@ def view_domain_status(call, project):
         else:
             status = "❓ Vercel-এ নেই (সম্ভবত ডাটাবেজে আছে)"
 
-        text += f"🌐 `{domain}`\n   → {status}\n\n"
+        text += f"🌐 `{safe_domain}`\n   → {status}\n\n"
 
     text += f"🔗 **ডিফল্ট URL:** {site.get('url', 'N/A')}"
 
@@ -1222,7 +1166,6 @@ def view_domain_status(call, project):
 
 
 def show_removable_domains(call, project):
-    """সরানোর জন্য ডোমেইন তালিকা দেখাও"""
     user_id = call.from_user.id
     session = domain_sessions.get(user_id, {})
     sites = db.get_user_sites(user_id)
@@ -1233,7 +1176,7 @@ def show_removable_domains(call, project):
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("⬅️ ফিরে যাও", callback_data="dom_cancel"))
         bot.edit_message_text(
-            f"📋 **{project}** সাইটে কোনো কাস্টম ডোমেইন নেই।",
+            f"📋 **{util.escape_markdown(project)}** সাইটে কোনো কাস্টম ডোমেইন নেই।",
             call.message.chat.id,
             call.message.message_id,
             parse_mode="Markdown",
@@ -1245,11 +1188,12 @@ def show_removable_domains(call, project):
 
     markup = InlineKeyboardMarkup(row_width=1)
     for i, domain in enumerate(domains):
-        markup.add(InlineKeyboardButton(f"🗑 {domain}", callback_data=f"dom_rmsel_{i}"))
+        safe_domain = util.escape_markdown(domain)
+        markup.add(InlineKeyboardButton(f"🗑 {safe_domain}", callback_data=f"dom_rmsel_{i}"))
     markup.add(InlineKeyboardButton("⬅️ ফিরে যাও", callback_data="dom_cancel"))
 
     bot.edit_message_text(
-        f"🗑 **{project}** সাইট থেকে কোন ডোমেইন সরাতে চাও?",
+        f"🗑 **{util.escape_markdown(project)}** সাইট থেকে কোন ডোমেইন সরাতে চাও?",
         call.message.chat.id,
         call.message.message_id,
         parse_mode="Markdown",
@@ -1258,7 +1202,6 @@ def show_removable_domains(call, project):
 
 
 def execute_domain_removal(call, project, domain):
-    """Vercel ও ডাটাবেজ থেকে ডোমেইন সরাও"""
     user_id = call.from_user.id
     headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
 
@@ -1272,7 +1215,7 @@ def execute_domain_removal(call, project, domain):
         if r.status_code in [200, 204]:
             db.remove_domain_from_site(user_id, project, domain)
             bot.edit_message_text(
-                f"✅ ডোমেইন `{domain}` সফলভাবে সরানো হয়েছে!\n\n"
+                f"✅ ডোমেইন `{util.escape_markdown(domain)}` সফলভাবে সরানো হয়েছে!\n\n"
                 f"📌 তোমার DNS রেকর্ডও মুছে ফেলতে পারো।",
                 call.message.chat.id,
                 call.message.message_id,
@@ -1281,7 +1224,7 @@ def execute_domain_removal(call, project, domain):
         elif r.status_code == 404:
             db.remove_domain_from_site(user_id, project, domain)
             bot.edit_message_text(
-                f"⚠️ ডোমেইন `{domain}` Vercel-এ পাওয়া যায়নি।\nডাটাবেজ থেকে সরিয়ে দেওয়া হয়েছে।",
+                f"⚠️ ডোমেইন `{util.escape_markdown(domain)}` Vercel-এ পাওয়া যায়নি।\nডাটাবেজ থেকে সরিয়ে দেওয়া হয়েছে।",
                 call.message.chat.id,
                 call.message.message_id,
                 parse_mode="Markdown"
@@ -1320,7 +1263,8 @@ def delete_site_menu(message):
         return
     markup = InlineKeyboardMarkup(row_width=1)
     for name in sites.keys():
-        markup.add(InlineKeyboardButton(f"🗑 {name}", callback_data=f"del_{name}"))
+        safe_name = util.escape_markdown(name)
+        markup.add(InlineKeyboardButton(f"🗑 {safe_name}", callback_data=f"del_{name}"))
     markup.add(InlineKeyboardButton("❌ বাতিল", callback_data="del_cancel"))
     bot.send_message(message.chat.id, "যে সাইট ডিলিট করতে চাও সেটি নির্বাচন করো:", reply_markup=markup)
 
@@ -1336,7 +1280,7 @@ def delete_callback(call):
         InlineKeyboardButton("❌ না", callback_data="del_cancel")
     )
     bot.edit_message_text(
-        f"**{project}** কি সত্যিই ডিলিট করতে চাও?\n\n⚠️ GitHub রিপো ও Vercel প্রোজেক্ট মুছে যাবে!",
+        f"**{util.escape_markdown(project)}** কি সত্যিই ডিলিট করতে চাও?\n\n⚠️ GitHub রিপো ও Vercel প্রোজেক্ট মুছে যাবে!",
         call.message.chat.id,
         call.message.message_id,
         parse_mode="Markdown",
@@ -1349,7 +1293,7 @@ def confirm_delete(call):
     user_id = call.from_user.id
 
     bot.edit_message_text(
-        f"⏳ **{project}** ডিলিট করা হচ্ছে...",
+        f"⏳ **{util.escape_markdown(project)}** ডিলিট করা হচ্ছে...",
         call.message.chat.id,
         call.message.message_id,
         parse_mode="Markdown"
@@ -1361,7 +1305,7 @@ def confirm_delete(call):
     db.delete_site(user_id, project)
 
     bot.edit_message_text(
-        f"✅ **{project}** সফলভাবে ডিলিট করা হয়েছে!",
+        f"✅ **{util.escape_markdown(project)}** সফলভাবে ডিলিট করা হয়েছে!",
         call.message.chat.id,
         call.message.message_id,
         parse_mode="Markdown"
