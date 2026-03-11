@@ -1,14 +1,11 @@
 # ==========================================================
-# 🔥 Telegram Hosting Bot – Enhanced v2 (Fully English)
+# 🔥 Telegram Hosting Bot – Enhanced v2 (English, Fixed URL)
 # ==========================================================
-# Changes made:
-# 1. Custom subdomain name: User provides site name, used as Vercel subdomain.
-# 2. Detailed instructions before ZIP upload.
-# 3. All messages and buttons are in English.
-# 4. Bot ignores messages from groups/channels (works only in private chat).
-# 5. Added pre‑checks for GitHub repo and Vercel project name conflicts.
-#    If name exists, user is asked to choose another one.
-# 6. Deployment URL is now exactly `https://<name>.vercel.app` (no extra strings).
+# Changes:
+# - Custom subdomain name with Vercel availability check
+# - If name taken, asks for another
+# - GitHub repo conflict also handled
+# - All messages in English, bot works only in private chat
 # ==========================================================
 
 import os
@@ -373,29 +370,6 @@ def get_daily_count(user_id):
 domain_sessions = {}
 
 # ==========================================================
-# 🔍 Name conflict checks
-# ==========================================================
-def check_github_repo_exists(repo_name):
-    """Return True if a GitHub repository with the given name already exists."""
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}"
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        return r.status_code == 200
-    except:
-        return False
-
-def check_vercel_project_exists(project_name):
-    """Return True if a Vercel project with the given name already exists."""
-    headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
-    url = f"https://api.vercel.com/v9/projects/{project_name}"
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        return r.status_code == 200
-    except:
-        return False
-
-# ==========================================================
 # 🎛 Menu Creation (English)
 # ==========================================================
 def main_menu():
@@ -482,6 +456,17 @@ def start_command(message):
 # Temporary storage for user's site name request
 user_site_name = {}
 
+def is_vercel_project_available(project_name):
+    """Check if a project name is available on Vercel (returns True if available)"""
+    headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
+    try:
+        r = requests.get(f"https://api.vercel.com/v9/projects/{project_name}", headers=headers, timeout=10)
+        return r.status_code == 404
+    except Exception as e:
+        print(f"⚠️ Vercel availability check error: {e}")
+        # If we can't check, assume it's available and let deployment handle errors
+        return True
+
 @bot.message_handler(func=lambda m: m.text == "🚀 Host Website")
 def ask_site_name(message):
     if message.chat.type != "private":
@@ -513,30 +498,21 @@ def process_site_name(message):
         )
         return
 
-    # Check GitHub for name conflict
-    if check_github_repo_exists(site_name):
+    # Check if name is available on Vercel
+    if not is_vercel_project_available(site_name):
         bot.reply_to(
             message,
-            f"❌ The name `{site_name}` is already taken on GitHub. Please choose a different name.",
-            parse_mode="Markdown",
-            reply_markup=main_menu()
+            f"❌ The name `{site_name}` is already taken on Vercel. Please choose another name.\n\n"
+            "Send a new site name (letters & numbers only, lowercase, 3-30 characters):",
+            parse_mode="Markdown"
         )
+        # Ask again
+        bot.register_next_step_handler(message, process_site_name)
         return
 
-    # Check Vercel for name conflict
-    if check_vercel_project_exists(site_name):
-        bot.reply_to(
-            message,
-            f"❌ The name `{site_name}` is already taken on Vercel. Please choose a different name.",
-            parse_mode="Markdown",
-            reply_markup=main_menu()
-        )
-        return
-
-    # Name is available, store it
+    # Store name and ask for ZIP
     user_site_name[user_id] = site_name
 
-    # Ask for ZIP file with detailed instructions
     instructions = (
         f"📤 **Now send the ZIP file for site:** `https://{site_name}.vercel.app`\n\n"
         f"**Requirements:**\n"
@@ -577,10 +553,13 @@ def handle_zip(message):
     if not check_daily_limit(user_id):
         used = get_daily_count(user_id)
         bot.reply_to(message, f"❌ Daily limit exceeded! Used: {used}/5")
+        # Clear stored name
+        user_site_name.pop(user_id, None)
         return
 
     if message.document.file_size > 50 * 1024 * 1024:
         bot.reply_to(message, "❌ File size cannot exceed 50MB!")
+        user_site_name.pop(user_id, None)
         return
 
     status_msg = bot.reply_to(message, "⏳ Processing started...")
@@ -604,7 +583,6 @@ def handle_zip(message):
                     message.chat.id, status_msg.message_id,
                     parse_mode="Markdown"
                 )
-                # Clear stored name
                 user_site_name.pop(user_id, None)
                 return
 
@@ -613,14 +591,21 @@ def handle_zip(message):
             # ======= Step 1: Create GitHub Repository =======
             bot.edit_message_text("🔧 Creating GitHub repository...", message.chat.id, status_msg.message_id)
 
-            github_ok, github_url = create_github_repo(repo_name, root_dir)
+            github_ok, github_url, github_error = create_github_repo(repo_name, root_dir)
             if not github_ok:
-                bot.edit_message_text(
-                    "❌ **GitHub repository creation failed!**\n\n"
-                    "Check your GitHub token.",
-                    message.chat.id, status_msg.message_id,
-                    parse_mode="Markdown"
-                )
+                if github_error == "CONFLICT":
+                    bot.edit_message_text(
+                        "❌ You already have a site with this name in your GitHub. Please choose a different name and try again.",
+                        message.chat.id, status_msg.message_id,
+                        parse_mode="Markdown"
+                    )
+                else:
+                    bot.edit_message_text(
+                        "❌ **GitHub repository creation failed!**\n\n"
+                        "Check your GitHub token.",
+                        message.chat.id, status_msg.message_id,
+                        parse_mode="Markdown"
+                    )
                 user_site_name.pop(user_id, None)
                 return
 
@@ -639,8 +624,7 @@ def handle_zip(message):
                     "❌ **Vercel deployment failed!**\n\n"
                     "Possible reasons:\n"
                     "• Invalid Vercel token\n"
-                    "• Issues with your files\n"
-                    "• Name conflict (should have been caught earlier)\n\n"
+                    "• Issues with your files\n\n"
                     "Please try again later.",
                     message.chat.id,
                     status_msg.message_id,
@@ -706,19 +690,17 @@ def create_github_repo(repo_name, local_path):
         test = requests.get("https://api.github.com/user", headers=headers, timeout=10)
         if test.status_code != 200:
             print("❌ GitHub token invalid")
-            return False, None
+            return False, None, "TOKEN_ERROR"
 
         # Create repo
         data = {"name": repo_name, "private": False}  # Public for hosting
         r = requests.post("https://api.github.com/user/repos", headers=headers, json=data, timeout=30)
         if r.status_code == 422:
-            # Name conflict – should not happen because we pre‑checked, but handle gracefully
-            repo_name = f"{repo_name}-{int(time.time())}"
-            data["name"] = repo_name
-            r = requests.post("https://api.github.com/user/repos", headers=headers, json=data, timeout=30)
+            # Name conflict (user already has a repo with that name)
+            return False, None, "CONFLICT"
         if r.status_code != 201:
             print(f"❌ GitHub repo creation failed: {r.status_code}")
-            return False, None
+            return False, None, "OTHER"
 
         time.sleep(1)
 
@@ -755,11 +737,11 @@ def create_github_repo(repo_name, local_path):
                 if resp.status_code not in [200, 201]:
                     print(f"⚠️ {rel_path} upload failed: {resp.status_code}")
 
-        return True, f"https://github.com/{GITHUB_USERNAME}/{repo_name}"
+        return True, f"https://github.com/{GITHUB_USERNAME}/{repo_name}", None
     except Exception as e:
         print(f"GitHub create error: {e}")
         traceback.print_exc()
-        return False, None
+        return False, None, "EXCEPTION"
 
 def delete_github_repo(repo_name):
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
@@ -887,10 +869,6 @@ def deploy_to_vercel(repo_name, local_path):
                     if state == "READY":
                         actual_url = check.json().get("url", deploy_url)
                         print(f"✅ Deployment READY: https://{actual_url}")
-                        # Ensure the URL is exactly repo_name.vercel.app (no extra suffixes)
-                        # The API should return the project's primary URL, but sometimes it returns a deployment URL.
-                        # We'll trust the API; however, if it's not the desired format, we can construct it.
-                        # But we already checked name conflicts, so it should be fine.
                         return f"https://{actual_url}"
                     elif state in ["ERROR", "CANCELED"]:
                         error_msg = check.json().get("errorMessage", "Unknown error")
