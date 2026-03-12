@@ -651,7 +651,7 @@ def handle_zip(message):
 
             # Success: increment count, save to DB
             used_now = increment_daily_count(user_id)
-            db.add_site(user_id, repo_name, {"url": live_url, "github": github_url})
+            db.add_site(user_id, repo_name, {"url": clean_url, "github": github_url})
 
             success_text = (
                 f"✅ **Deployment successful!** 🎉\n\n"
