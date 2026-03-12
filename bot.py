@@ -6,9 +6,7 @@
 # 2. Detailed instructions before ZIP upload.
 # 3. All messages and buttons are in English.
 # 4. Bot ignores messages from groups/channels (works only in private chat).
-# 5. Added pre‑checks for GitHub repo and Vercel project name conflicts.
-#    If name exists, user is asked to choose another one.
-# 6. Deployment URL is now exactly `https://<name>.vercel.app` (no extra strings).
+# 5. Success message now shows both actual Live URL and the desired clean URL.
 # ==========================================================
 
 import os
@@ -373,29 +371,6 @@ def get_daily_count(user_id):
 domain_sessions = {}
 
 # ==========================================================
-# 🔍 Name conflict checks
-# ==========================================================
-def check_github_repo_exists(repo_name):
-    """Return True if a GitHub repository with the given name already exists."""
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}"
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        return r.status_code == 200
-    except:
-        return False
-
-def check_vercel_project_exists(project_name):
-    """Return True if a Vercel project with the given name already exists."""
-    headers = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
-    url = f"https://api.vercel.com/v9/projects/{project_name}"
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        return r.status_code == 200
-    except:
-        return False
-
-# ==========================================================
 # 🎛 Menu Creation (English)
 # ==========================================================
 def main_menu():
@@ -513,27 +488,8 @@ def process_site_name(message):
         )
         return
 
-    # Check GitHub for name conflict
-    if check_github_repo_exists(site_name):
-        bot.reply_to(
-            message,
-            f"❌ The name `{site_name}` is already taken on GitHub. Please choose a different name.",
-            parse_mode="Markdown",
-            reply_markup=main_menu()
-        )
-        return
-
-    # Check Vercel for name conflict
-    if check_vercel_project_exists(site_name):
-        bot.reply_to(
-            message,
-            f"❌ The name `{site_name}` is already taken on Vercel. Please choose a different name.",
-            parse_mode="Markdown",
-            reply_markup=main_menu()
-        )
-        return
-
-    # Name is available, store it
+    # Check if name already used by this user or globally? We'll check Vercel project existence later.
+    # For now, store it temporarily
     user_site_name[user_id] = site_name
 
     # Ask for ZIP file with detailed instructions
@@ -546,6 +502,8 @@ def process_site_name(message):
         f"After upload, the bot will create a GitHub repo and deploy to Vercel."
     )
     bot.send_message(message.chat.id, instructions, parse_mode="Markdown")
+
+    # Next step is handled by handle_zip
 
 # Modify handle_zip to use custom name if available
 @bot.message_handler(content_types=['document'])
@@ -639,8 +597,7 @@ def handle_zip(message):
                     "❌ **Vercel deployment failed!**\n\n"
                     "Possible reasons:\n"
                     "• Invalid Vercel token\n"
-                    "• Issues with your files\n"
-                    "• Name conflict (should have been caught earlier)\n\n"
+                    "• Issues with your files\n\n"
                     "Please try again later.",
                     message.chat.id,
                     status_msg.message_id,
@@ -651,11 +608,24 @@ def handle_zip(message):
 
             # Success: increment count, save to DB
             used_now = increment_daily_count(user_id)
-            db.add_site(user_id, repo_name, {"url": clean_url, "github": github_url})
+            db.add_site(user_id, repo_name, {"url": live_url, "github": github_url})
+
+            # Construct clean desired URL
+            clean_url = f"https://{site_name}.vercel.app"
+
+            # Build success message
+            if live_url != clean_url:
+                url_section = (
+                    f"🌐 **Live URL:**\n{live_url}\n\n"
+                    f"🔗 **Your desired URL:** {clean_url}\n"
+                    f"   (To use this, add a custom domain via 'Manage Domains')"
+                )
+            else:
+                url_section = f"🌐 **Live URL:**\n{live_url}"
 
             success_text = (
                 f"✅ **Deployment successful!** 🎉\n\n"
-                f"🌐 **Live URL:**\n{clean_url}\n\n"
+                f"{url_section}\n\n"
                 f"📂 **GitHub Repository:**\n{github_url}\n\n"
                 f"📊 **Today's usage:** {used_now}/5\n\n"
                 f"💡 **Next steps:**\n"
@@ -712,7 +682,7 @@ def create_github_repo(repo_name, local_path):
         data = {"name": repo_name, "private": False}  # Public for hosting
         r = requests.post("https://api.github.com/user/repos", headers=headers, json=data, timeout=30)
         if r.status_code == 422:
-            # Name conflict – should not happen because we pre‑checked, but handle gracefully
+            # Name conflict, append timestamp
             repo_name = f"{repo_name}-{int(time.time())}"
             data["name"] = repo_name
             r = requests.post("https://api.github.com/user/repos", headers=headers, json=data, timeout=30)
@@ -887,10 +857,6 @@ def deploy_to_vercel(repo_name, local_path):
                     if state == "READY":
                         actual_url = check.json().get("url", deploy_url)
                         print(f"✅ Deployment READY: https://{actual_url}")
-                        # Ensure the URL is exactly repo_name.vercel.app (no extra suffixes)
-                        # The API should return the project's primary URL, but sometimes it returns a deployment URL.
-                        # We'll trust the API; however, if it's not the desired format, we can construct it.
-                        # But we already checked name conflicts, so it should be fine.
                         return f"https://{actual_url}"
                     elif state in ["ERROR", "CANCELED"]:
                         error_msg = check.json().get("errorMessage", "Unknown error")
