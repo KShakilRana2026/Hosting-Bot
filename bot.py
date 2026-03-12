@@ -655,7 +655,7 @@ def handle_zip(message):
 
             success_text = (
                 f"✅ **Deployment successful!** 🎉\n\n"
-                f"🌐 **Live URL:**\n{live_url}\n\n"
+                f"🌐 **Live URL:**\n{clean_url}\n\n"
                 f"📂 **GitHub Repository:**\n{github_url}\n\n"
                 f"📊 **Today's usage:** {used_now}/5\n\n"
                 f"💡 **Next steps:**\n"
