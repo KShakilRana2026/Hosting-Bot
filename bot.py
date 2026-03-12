@@ -499,7 +499,8 @@ def process_site_name(message):
         f"• The ZIP must contain an `index.html` file at the root or inside a single folder.\n"
         f"• Max size: 50MB.\n"
         f"• All files will be uploaded and deployed as a static site.\n\n"
-        f"After upload, the bot will create a GitHub repo and deploy to Vercel."
+        f"After upload, the bot will create a GitHub repo and deploy to Vercel.\n"
+        f"📤 **Your URL:** `https://{site_name}.vercel.app`"
     )
     bot.send_message(message.chat.id, instructions, parse_mode="Markdown")
 
