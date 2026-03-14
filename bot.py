@@ -1000,7 +1000,7 @@ def daily_limit_menu(message):
     bot.reply_to(message, text, parse_mode="Markdown")
 
 # ==========================================================
-# 👑 Admin Panel (English) – unchanged
+# 👑 Admin Panel (English) – fully implemented now
 # ==========================================================
 admin_sessions = {}
 
@@ -1025,8 +1025,237 @@ def check_admin_pass(message):
     else:
         bot.reply_to(message, "❌ **Wrong password!**", reply_markup=main_menu())
 
-# Admin commands (total users, total sites, ban, unban, reset, broadcast, add/remove admin, admin list, logout)
-# (All unchanged from previous version – include them here)
+# ==========================================================
+# 👑 Admin Commands (Total Users)
+# ==========================================================
+@bot.message_handler(func=lambda m: m.text == "📊 Total Users")
+def admin_total_users(message):
+    if message.chat.type != "private":
+        return
+    user_id = message.from_user.id
+    if not admin_sessions.get(user_id):
+        bot.reply_to(message, "❌ You are not logged in as admin!", reply_markup=main_menu())
+        return
+    stats = db.get_stats()
+    bot.reply_to(message, f"📊 **Total Users:** {stats['total_users']}", parse_mode="Markdown")
+
+# ==========================================================
+# 👑 Admin Commands (Total Sites)
+# ==========================================================
+@bot.message_handler(func=lambda m: m.text == "🌍 Total Sites")
+def admin_total_sites(message):
+    if message.chat.type != "private":
+        return
+    user_id = message.from_user.id
+    if not admin_sessions.get(user_id):
+        bot.reply_to(message, "❌ You are not logged in as admin!", reply_markup=main_menu())
+        return
+    stats = db.get_stats()
+    bot.reply_to(message, f"🌍 **Total Sites:** {stats['total_sites']}", parse_mode="Markdown")
+
+# ==========================================================
+# 👑 Ban User
+# ==========================================================
+@bot.message_handler(func=lambda m: m.text == "🚫 Ban User")
+def admin_ban_user(message):
+    if message.chat.type != "private":
+        return
+    user_id = message.from_user.id
+    if not admin_sessions.get(user_id):
+        bot.reply_to(message, "❌ You are not logged in as admin!", reply_markup=main_menu())
+        return
+    msg = bot.reply_to(message, "🚫 **Enter the user ID to ban:**", parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_ban_user)
+
+def process_ban_user(message):
+    admin_id = message.from_user.id
+    try:
+        target_id = int(message.text.strip())
+    except:
+        bot.reply_to(message, "❌ Invalid ID! Use numbers only.", reply_markup=admin_menu())
+        return
+    if db.is_admin(target_id, ADMIN_ID):
+        bot.reply_to(message, "❌ Cannot ban an admin!", reply_markup=admin_menu())
+        return
+    db.ban_user(target_id, admin_id)
+    bot.reply_to(message, f"✅ User `{target_id}` has been banned.", parse_mode="Markdown", reply_markup=admin_menu())
+
+# ==========================================================
+# 👑 Unban User
+# ==========================================================
+@bot.message_handler(func=lambda m: m.text == "✅ Unban User")
+def admin_unban_user(message):
+    if message.chat.type != "private":
+        return
+    user_id = message.from_user.id
+    if not admin_sessions.get(user_id):
+        bot.reply_to(message, "❌ You are not logged in as admin!", reply_markup=main_menu())
+        return
+    msg = bot.reply_to(message, "✅ **Enter the user ID to unban:**", parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_unban_user)
+
+def process_unban_user(message):
+    try:
+        target_id = int(message.text.strip())
+    except:
+        bot.reply_to(message, "❌ Invalid ID! Use numbers only.", reply_markup=admin_menu())
+        return
+    db.unban_user(target_id)
+    bot.reply_to(message, f"✅ User `{target_id}` has been unbanned.", parse_mode="Markdown", reply_markup=admin_menu())
+
+# ==========================================================
+# 👑 Reset Daily Limit
+# ==========================================================
+@bot.message_handler(func=lambda m: m.text == "🔄 Reset Limit")
+def admin_reset_limit(message):
+    if message.chat.type != "private":
+        return
+    user_id = message.from_user.id
+    if not admin_sessions.get(user_id):
+        bot.reply_to(message, "❌ You are not logged in as admin!", reply_markup=main_menu())
+        return
+    msg = bot.reply_to(message, "🔄 **Enter the user ID to reset daily limit:**", parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_reset_limit)
+
+def process_reset_limit(message):
+    try:
+        target_id = int(message.text.strip())
+    except:
+        bot.reply_to(message, "❌ Invalid ID! Use numbers only.", reply_markup=admin_menu())
+        return
+    db.reset_daily_count(target_id)
+    # Also clear cache for that user
+    today = datetime.now().strftime("%Y-%m-%d")
+    daily_cache.pop(f"{target_id}_{today}", None)
+    bot.reply_to(message, f"✅ Daily limit for user `{target_id}` has been reset.", parse_mode="Markdown", reply_markup=admin_menu())
+
+# ==========================================================
+# 👑 Broadcast Message
+# ==========================================================
+@bot.message_handler(func=lambda m: m.text == "📢 Broadcast")
+def admin_broadcast(message):
+    if message.chat.type != "private":
+        return
+    user_id = message.from_user.id
+    if not admin_sessions.get(user_id):
+        bot.reply_to(message, "❌ You are not logged in as admin!", reply_markup=main_menu())
+        return
+    msg = bot.reply_to(message, "📢 **Send the message to broadcast to all users:**", parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_broadcast)
+
+def process_broadcast(message):
+    broadcast_text = message.text
+    admin_id = message.from_user.id
+    bot.reply_to(message, "⏳ Broadcasting in progress...")
+    users = db.get_all_users()
+    sent = 0
+    failed = 0
+    for uid_str in users.keys():
+        try:
+            bot.send_message(int(uid_str), f"📢 **Broadcast:**\n\n{broadcast_text}", parse_mode="Markdown")
+            sent += 1
+        except Exception as e:
+            print(f"Broadcast failed to {uid_str}: {e}")
+            failed += 1
+    bot.send_message(admin_id, f"✅ Broadcast completed.\n📨 Sent: {sent}\n❌ Failed: {failed}", reply_markup=admin_menu())
+
+# ==========================================================
+# 👑 Add Admin
+# ==========================================================
+@bot.message_handler(func=lambda m: m.text == "➕ Add Admin")
+def admin_add_admin(message):
+    if message.chat.type != "private":
+        return
+    user_id = message.from_user.id
+    if not admin_sessions.get(user_id):
+        bot.reply_to(message, "❌ You are not logged in as admin!", reply_markup=main_menu())
+        return
+    msg = bot.reply_to(message, "➕ **Enter the user ID to add as admin:**", parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_add_admin)
+
+def process_add_admin(message):
+    admin_id = message.from_user.id
+    try:
+        target_id = int(message.text.strip())
+    except:
+        bot.reply_to(message, "❌ Invalid ID! Use numbers only.", reply_markup=admin_menu())
+        return
+    if db.is_admin(target_id, ADMIN_ID):
+        bot.reply_to(message, "❌ User is already an admin!", reply_markup=admin_menu())
+        return
+    db.add_admin(target_id, admin_id)
+    bot.reply_to(message, f"✅ User `{target_id}` is now an admin.", parse_mode="Markdown", reply_markup=admin_menu())
+
+# ==========================================================
+# 👑 Remove Admin
+# ==========================================================
+@bot.message_handler(func=lambda m: m.text == "➖ Remove Admin")
+def admin_remove_admin(message):
+    if message.chat.type != "private":
+        return
+    user_id = message.from_user.id
+    if not admin_sessions.get(user_id):
+        bot.reply_to(message, "❌ You are not logged in as admin!", reply_markup=main_menu())
+        return
+    msg = bot.reply_to(message, "➖ **Enter the user ID to remove from admin:**", parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_remove_admin)
+
+def process_remove_admin(message):
+    try:
+        target_id = int(message.text.strip())
+    except:
+        bot.reply_to(message, "❌ Invalid ID! Use numbers only.", reply_markup=admin_menu())
+        return
+    if str(target_id) == str(ADMIN_ID):
+        bot.reply_to(message, "❌ Cannot remove the super admin!", reply_markup=admin_menu())
+        return
+    if not db.is_admin(target_id, ADMIN_ID):
+        bot.reply_to(message, "❌ User is not an admin!", reply_markup=admin_menu())
+        return
+    db.remove_admin(target_id)
+    bot.reply_to(message, f"✅ User `{target_id}` is no longer an admin.", parse_mode="Markdown", reply_markup=admin_menu())
+
+# ==========================================================
+# 👑 Admin List
+# ==========================================================
+@bot.message_handler(func=lambda m: m.text == "📋 Admin List")
+def admin_list(message):
+    if message.chat.type != "private":
+        return
+    user_id = message.from_user.id
+    if not admin_sessions.get(user_id):
+        bot.reply_to(message, "❌ You are not logged in as admin!", reply_markup=main_menu())
+        return
+    admins = db.get_admins()
+    text = "**👑 Admin List:**\n\n"
+    text += f"• Super Admin: `{ADMIN_ID}`\n"
+    for aid, info in admins.items():
+        text += f"• `{aid}` (added by {info['added_by']} on {info['added_at'][:10]})\n"
+    if len(admins) == 0:
+        text += "(No additional admins)"
+    bot.reply_to(message, text, parse_mode="Markdown")
+
+# ==========================================================
+# 👑 Logout
+# ==========================================================
+@bot.message_handler(func=lambda m: m.text == "🚪 Logout")
+def admin_logout(message):
+    if message.chat.type != "private":
+        return
+    user_id = message.from_user.id
+    if admin_sessions.pop(user_id, None):
+        bot.reply_to(message, "✅ Logged out successfully.", reply_markup=main_menu())
+    else:
+        bot.reply_to(message, "❌ You are not logged in.", reply_markup=main_menu())
+
+# ==========================================================
+# 👑 Back to Main Menu
+# ==========================================================
+@bot.message_handler(func=lambda m: m.text == "⬅️ Main Menu")
+def back_to_main(message):
+    if message.chat.type != "private":
+        return
+    bot.send_message(message.chat.id, "🏠 **Main Menu**", parse_mode="Markdown", reply_markup=main_menu())
 
 # ==========================================================
 # 🔄 Fallback Handler (private chat only)
